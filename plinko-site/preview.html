@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PREVIEW — Plinko Solutions | Be the Red Dot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;1,400;1,500&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap">
+<style>
+:root {
+  --paper: #faf8f3; --paper-2: #f3f0e9; --ink: #211e1a; --muted: #8a8478; --line: #e5e1d8;
+  --dot-grey: #d9d5cc; --green: #57b176; --green-deep: #3e9c63; --green-dark: #2c7a4b;
+  --amber: #e3a51c; --red: #d6453a; --red-dark: #b9342a;
+  --serif: 'Newsreader', Georgia, serif; --mono: 'IBM Plex Mono', 'Courier New', monospace;
+  --sans: 'Inter', -apple-system, 'Segoe UI', sans-serif;
+  --maxw: 1080px; --radius: 10px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body { background: var(--paper); color: var(--ink); font-family: var(--sans); font-size: 17px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+::selection { background: var(--green); color: #fff; }
+h1, h2, h3 { font-family: var(--serif); font-weight: 500; line-height: 1.12; letter-spacing: -0.01em; }
+a { color: inherit; }
+.wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+.kicker { font-family: var(--mono); font-size: 13px; letter-spacing: 0.06em; color: var(--muted); display: flex; align-items: center; gap: 10px; justify-content: center; }
+.kicker .sw { width: 11px; height: 11px; border-radius: 3px; flex: none; }
+section { padding: 96px 0; }
+.section-head { text-align: center; max-width: 640px; margin: 0 auto 56px; }
+.section-head h2 { font-size: clamp(30px, 4.4vw, 44px); margin: 14px 0 16px; }
+.section-head p { color: var(--muted); }
+.sw { display: inline-block; }
+.nav { position: fixed; top: 0; left: 0; right: 0; z-index: 50; background: rgba(250,248,243,.88); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+.nav-inner { max-width: var(--maxw); margin: 0 auto; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.brand { display: flex; align-items: center; gap: 10px; font-family: var(--serif); font-size: 20px; font-weight: 600; text-decoration: none; }
+.brand-dots { display: grid; grid-template-columns: repeat(2, 8px); gap: 3px; }
+.brand-dots span { width: 8px; height: 8px; border-radius: 2px; background: var(--dot-grey); }
+.brand-dots span:nth-child(3) { background: var(--green); }
+.brand-dots span:nth-child(4) { background: var(--red); }
+.nav-links { display: flex; align-items: center; gap: 26px; font-size: 14.5px; }
+.nav-links a { text-decoration: none; color: var(--muted); transition: color .15s; }
+.nav-links a:hover { color: var(--ink); }
+.nav-links a.btn-red, .nav-links a.btn-red:hover,
+.nav-links a.btn-green, .nav-links a.btn-green:hover { color: #fff; }
+.btn { display: inline-block; text-decoration: none; font-weight: 600; font-size: 15px; padding: 12px 22px; border-radius: 8px; transition: transform .12s, background .15s; border: none; cursor: pointer; }
+.btn:hover { transform: translateY(-1px); }
+.btn-green { background: var(--green-deep); color: #fff; }
+.btn-green:hover { background: var(--green-dark); }
+.btn-ghost { background: transparent; color: var(--ink); border: 1.5px solid var(--line); }
+.btn-ghost:hover { border-color: var(--ink); }
+.btn-red { background: var(--red); color: #fff; }
+.btn-red:hover { background: var(--red-dark); }
+.nav .btn { padding: 9px 16px; font-size: 14px; }
+@media (max-width: 760px) { .nav-links a:not(.btn) { display: none; } }
+.story { height: 520vh; position: relative; padding: 0; }
+.story-sticky { position: sticky; top: 0; height: 100vh; height: 100svh; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.story-grid { width: 100%; max-width: 1180px; height: 100%; display: grid; grid-template-columns: minmax(320px, 460px) 1fr; gap: 24px; align-items: center; padding: 76px 24px 24px; }
+.story-canvas { position: relative; height: min(82vh, 760px); }
+.story-canvas canvas { width: 100%; height: 100%; display: block; }
+.story-captions { position: relative; min-height: 360px; }
+.story-caption { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; opacity: 0; transform: translateY(18px); transition: opacity .45s ease, transform .45s ease; pointer-events: none; }
+.story-caption.on { opacity: 1; transform: none; pointer-events: auto; }
+.story-stat { font-family: var(--mono); font-size: 14px; display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+.story-stat .sw { width: 12px; height: 12px; border-radius: 3px; }
+.story-caption h2 { font-size: clamp(30px, 3.6vw, 46px); margin-bottom: 16px; }
+.story-caption p { color: var(--muted); font-size: 17px; max-width: 400px; }
+.story-caption .big { font-family: var(--serif); font-size: clamp(54px, 6vw, 84px); line-height: 1; margin-bottom: 10px; }
+.story-caption .btn { margin-top: 26px; align-self: flex-start; }
+.story-meta { position: absolute; top: 84px; left: 0; right: 0; text-align: center; font-family: var(--mono); font-size: 12.5px; color: var(--muted); }
+.story-hint { position: absolute; bottom: 22px; left: 0; right: 0; text-align: center; font-family: var(--mono); font-size: 12px; color: var(--muted); animation: bob 2.2s ease-in-out infinite; }
+@keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(6px); } }
+@media (max-width: 860px) {
+  .story-grid { grid-template-columns: 1fr; grid-template-rows: 1fr auto; gap: 8px; padding-top: 64px; }
+  .story-canvas { height: 46vh; order: -1; }
+  .story-captions { min-height: 300px; }
+  .story-caption { justify-content: flex-start; }
+  .story-caption h2 { font-size: 26px; }
+  .story-caption .big { font-size: 48px; }
+}
+.bridge { background: var(--ink); color: var(--paper); text-align: center; }
+.bridge h2 { font-size: clamp(32px, 5vw, 54px); max-width: 760px; margin: 0 auto 20px; }
+.bridge h2 em { font-style: italic; color: var(--green); }
+.bridge .red-dot { display: inline-block; width: 0.62em; height: 0.62em; border-radius: 0.16em; background: var(--red); margin: 0 0.08em; animation: pulse 2s infinite; }
+.bridge p { color: #b8b2a6; max-width: 560px; margin: 0 auto 34px; }
+@keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(214,69,58,.45); } 50% { box-shadow: 0 0 0 12px rgba(214,69,58,0); } }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+@media (max-width: 900px) { .grid-3, .grid-4 { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 600px) { .grid-3, .grid-4 { grid-template-columns: 1fr; } }
+.card { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 28px; }
+.card h3 { font-size: 20px; margin: 14px 0 10px; }
+.card p { color: var(--muted); font-size: 15.5px; }
+.card > .sw { width: 14px; height: 14px; border-radius: 4px; display: block; }
+.stats { background: var(--paper-2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 56px 0; }
+.stats .wrap { display: flex; justify-content: space-around; gap: 24px; flex-wrap: wrap; text-align: center; }
+.stat-n { font-family: var(--serif); font-size: 52px; line-height: 1; color: var(--green-dark); }
+.stat-l { font-family: var(--mono); font-size: 13px; color: var(--muted); margin-top: 8px; }
+.step-n { font-family: var(--mono); font-size: 13px; color: var(--green-dark); display: inline-flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.step-dots { display: inline-flex; gap: 4px; }
+.step-dots span { width: 9px; height: 9px; border-radius: 2.5px; background: var(--dot-grey); }
+.step-dots span.f { background: var(--green); }
+.price-card { position: relative; display: flex; flex-direction: column; }
+.price-card.popular { border-color: var(--green-deep); border-width: 2px; box-shadow: 0 10px 36px rgba(62,156,99,.12); }
+.pop-tag { position: absolute; top: -13px; left: 50%; transform: translateX(-50%); background: var(--green-deep); color: #fff; font-family: var(--mono); font-size: 11.5px; padding: 4px 12px; border-radius: 99px; white-space: nowrap; }
+.price-card h3 { margin-top: 4px; }
+.price { font-family: var(--serif); font-size: 40px; margin: 10px 0 2px; }
+.price-sub { font-family: var(--mono); font-size: 12.5px; color: var(--muted); margin-bottom: 18px; }
+.price-card ul { list-style: none; margin: 0 0 26px; flex: 1; }
+.price-card li { padding: 7px 0; font-size: 15px; display: flex; gap: 10px; align-items: baseline; }
+.price-card li::before { content: ''; width: 9px; height: 9px; border-radius: 2.5px; background: var(--green); flex: none; position: relative; top: 1px; }
+.price-card .btn { text-align: center; }
+.table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: #fff; }
+table { width: 100%; border-collapse: collapse; font-size: 14.5px; min-width: 680px; }
+th, td { padding: 14px 18px; text-align: left; border-bottom: 1px solid var(--line); }
+thead th { font-family: var(--mono); font-size: 12.5px; color: var(--muted); font-weight: 500; background: var(--paper-2); }
+tbody tr:last-child td { border-bottom: none; }
+td.you { background: #f0f7f1; font-weight: 600; }
+thead th.you { color: var(--green-dark); background: #e6f2e9; }
+.t-grid { columns: 3 280px; column-gap: 20px; }
+.t-card { break-inside: avoid; margin-bottom: 20px; background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; }
+.t-card blockquote { font-size: 15px; font-style: italic; font-family: var(--serif); }
+.t-who { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
+.t-av { width: 36px; height: 36px; border-radius: 8px; background: var(--green-deep); color: #fff; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 12.5px; flex: none; }
+.t-name { font-weight: 600; font-size: 14px; }
+.t-date { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.guarantee { background: #fff; border: 1.5px solid var(--green-deep); border-radius: var(--radius); padding: 36px; text-align: center; max-width: 720px; margin: 48px auto 0; }
+.guarantee h3 { font-size: 24px; margin-bottom: 10px; }
+.guarantee p { color: var(--muted); }
+.faq { max-width: 760px; margin: 0 auto; }
+.faq details { border-bottom: 1px solid var(--line); }
+.faq summary { cursor: pointer; padding: 20px 0; font-weight: 600; font-size: 16.5px; list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::after { content: '+'; font-family: var(--mono); color: var(--muted); font-size: 20px; flex: none; }
+.faq details[open] summary::after { content: '\2212'; }
+.faq details p { color: var(--muted); padding: 0 0 20px; font-size: 15.5px; max-width: 680px; }
+.tools { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.tool { font-family: var(--mono); font-size: 13.5px; background: #fff; border: 1px solid var(--line); border-radius: 99px; padding: 8px 16px; display: flex; align-items: center; gap: 8px; }
+.tool .sw { width: 8px; height: 8px; border-radius: 2px; background: var(--green); }
+.final { text-align: center; }
+.final h2 { font-size: clamp(32px, 4.6vw, 48px); margin: 14px 0 16px; }
+.final p { color: var(--muted); max-width: 520px; margin: 0 auto 32px; }
+footer { background: var(--ink); color: #b8b2a6; padding: 72px 0 40px; }
+.foot-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 48px; margin-bottom: 48px; }
+@media (max-width: 700px) { .foot-grid { grid-template-columns: 1fr; } }
+footer h3 { color: var(--paper); font-size: 22px; margin-bottom: 4px; }
+.foot-role { font-family: var(--mono); font-size: 12.5px; color: var(--green); margin-bottom: 14px; }
+footer p { font-size: 14.5px; max-width: 460px; }
+.foot-links { display: flex; flex-direction: column; gap: 10px; font-size: 14.5px; }
+.foot-links a { color: #b8b2a6; text-decoration: none; }
+.foot-links a:hover { color: var(--paper); }
+.foot-base { border-top: 1px solid #3a362f; padding-top: 24px; font-family: var(--mono); font-size: 12px; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.foot-legend { display: flex; gap: 16px; flex-wrap: wrap; }
+.foot-legend span { display: flex; align-items: center; gap: 6px; }
+.foot-legend .sw { width: 9px; height: 9px; border-radius: 2.5px; }
+.sw { border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="#story">
+      <span class="brand-dots"><span></span><span></span><span></span><span></span></span>
+      Plinko Solutions
+    </a>
+    <div class="nav-links">
+      <a href="#what-is">What is a Harness?</a>
+      <a href="#how">How It Works</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#compare">Compare</a>
+      <a href="#faq">FAQ</a>
+      <a class="btn btn-green" href="https://cal.com/jonathan-mclemore-t2zmlc/steppingstones?duration=15">Book a Strategy Session</a>
+    </div>
+  </div>
+</nav>
+
+<section class="story" id="story">
+  <div class="story-sticky">
+    <div class="story-meta">2,500 dots = 8.1 billion humans &middot; color = most advanced AI interaction, Feb 2026</div>
+    <div class="story-grid">
+      <div class="story-captions" id="captions"></div>
+      <div class="story-canvas"><canvas id="dots"></canvas></div>
+    </div>
+    <div class="story-hint" id="hint">scroll &darr;</div>
+  </div>
+</section>
+
+<section class="bridge">
+  <div class="wrap">
+    <h2>You don’t need to out-hire your market.<br>You need to be <em>the red dot</em><span class="red-dot"></span></h2>
+    <p>Plinko Solutions builds private AI operating systems for growing businesses — wired into the tools you already use, kept in house, and handed over as something you own from day one.</p>
+    <a class="btn btn-red" href="https://cal.com/jonathan-mclemore-t2zmlc/steppingstones?duration=15">Book Your Strategy Session</a>
+  </div>
+</section>
+
+<section id="what-is">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="kicker"><span class="sw" style="background:#d6453a"></span>the red-dot tier, explained</div>
+      <h2>The red dot isn’t a smarter prompt. It’s a system.</h2>
+      <p>An <strong>AI harness</strong> is the delivery model behind your AI operating system: a private setup of specialized agents, tools, and workflows that handles recurring business work inside Slack, Gmail, CRMs, calendars, and the rest of your stack. Multi-agent research keeps finding the same pattern — when research, drafting, checking, routing, and approvals are split into clear roles, reliability goes up. That’s what we build. And you own it outright.</p>
+    </div>
+    <div class="tools" id="tools"></div>
+  </div>
+</section>
+
+<section style="background:var(--paper-2); border-top:1px solid var(--line); border-bottom:1px solid var(--line)">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="kicker"><span class="sw" style="background:#d9d5cc"></span>stuck in the grey and green</div>
+      <h2>Most AI “solutions” create more work</h2>
+      <p>Teams buy tools, burn credits, and still do the heavy lifting. The problem isn’t access to AI — 1.3 billion people have that. It’s the lack of a system that can actually run research, drafting, checking, follow-up, and ops inside your workflows.</p>
+    </div>
+    <div class="grid-4">
+      <div class="card"><span class="sw" style="background:#d9d5cc"></span><h3>Scattered research</h3><p>Prospect data lives in five tabs, two spreadsheets, and a notebook. Your team repeats the same lookup every week.</p></div>
+      <div class="card"><span class="sw" style="background:#d9d5cc"></span><h3>Drafting delays</h3><p>Proposals, follow-ups, and outreach sit in drafts for days because no one has time to polish them.</p></div>
+      <div class="card"><span class="sw" style="background:#d9d5cc"></span><h3>Follow-up gaps</h3><p>Leads go cold after one email. CRM reminders are ignored. Revenue leaks through cracks in the process.</p></div>
+      <div class="card"><span class="sw" style="background:#d9d5cc"></span><h3>Ops overhead</h3><p>Scheduling, data entry, and reporting eat hours that should go to closing deals and serving clients.</p></div>
+    </div>
+  </div>
+</section>
+
+<div class="stats">
+  <div class="wrap">
+    <div><div class="stat-n">14</div><div class="stat-l">days to first workflow</div></div>
+    <div><div class="stat-n">5+</div><div class="stat-l">integrations per harness</div></div>
+    <div><div class="stat-n">0</div><div class="stat-l">monthly platform fees</div></div>
+  </div>
+</div>
+
+<section id="how">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="kicker"><span class="sw" style="background:#57b176"></span>grey &rarr; green &rarr; red</div>
+      <h2>How it works</h2>
+      <p>Three phases from strategy to an AI operating system your team can actually run.</p>
+    </div>
+    <div class="grid-3">
+      <div class="card"><div class="step-n">01 <span class="step-dots"><span class="f"></span><span></span><span></span></span></div><h3>Strategy Session</h3><p>Book a paid 60-minute session. We map the workflows that cost you time or leak revenue, the tools your team already uses, and the approval gates that matter. You leave with a clear build plan — and the fee is credited toward your system.</p></div>
+      <div class="card"><div class="step-n">02 <span class="step-dots"><span class="f"></span><span class="f"></span><span></span></span></div><h3>Build &amp; Configure</h3><p>We architect and deploy your private system using Claude Cowork, OpenClaw, and Hermes: integrations, specialized agent roles, approval gates, and the safety controls needed to move from demo behavior to real operational work.</p></div>
+      <div class="card"><div class="step-n">03 <span class="step-dots"><span class="f"></span><span class="f"></span><span class="f"></span></span></div><h3>Handoff &amp; Run</h3><p>We train your team, document the system, and hand over full ownership. You control the workflows, the data, the integrations, and the operating layer — instead of renting access to someone else’s platform.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="pricing" style="background:var(--paper-2); border-top:1px solid var(--line); border-bottom:1px solid var(--line)">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="kicker"><span class="sw" style="background:#e3a51c"></span>own it, don’t rent it</div>
+      <h2>Simple, one-time pricing</h2>
+      <p>Choose the plan that fits your revenue floor and workflow complexity. We scope around the business outcomes you want, the systems you need connected, and how much of the operating layer you want built now.</p>
+    </div>
+    <div class="grid-3">
+      <div class="card price-card">
+        <h3>Starter Harness</h3><div class="price">$10k+ MRR</div>
+        <div class="price-sub">Single workflow, lean teams · payment plans available</div>
+        <ul><li>Single core workflow</li><li>2 integrations</li><li>Basic approval gates</li><li>14-day delivery</li><li>30 days of support</li></ul>
+        <a class="btn btn-ghost" href="https://cal.com/jonathan-mclemore-t2zmlc/steppingstones?duration=15">Book Strategy Session</a>
+      </div>
+      <div class="card price-card popular">
+        <span class="pop-tag">Most Popular</span>
+        <h3>Business Harness</h3><div class="price">$50k+ MRR</div>
+        <div class="price-sub">Multi-agent, growing teams · payment plans available</div>
+        <ul><li>Multi-agent system</li><li>Up to 4 workflows</li><li>5+ integrations</li><li>Advanced governance</li><li>60-day support</li></ul>
+        <a class="btn btn-green" href="https://cal.com/jonathan-mclemore-t2zmlc/steppingstones?duration=15">Book Strategy Session</a>
+      </div>
+      <div class="card price-card">
+        <h3>Ongoing Care</h3><div class="price">$750/m</div>
+        <div class="price-sub">Optional — cancel anytime</div>
+        <ul><li>Priority support</li><li>New skills &amp; integrations</li><li>Monthly health checks</li><li>Monitoring &amp; alerts</li><li>Quarterly reviews</li></ul>
+        <a class="btn btn-ghost" href="https://cal.com/jonathan-mclemore-t2zmlc/steppingstones?duration=15">Book Strategy Session</a>
+      </div>
+    </div>
+    <p style="text-align:center; margin-top:32px; color:var(--muted); font-size:15px">Not sure which tier fits? The Strategy Session is credited toward your build.</p>
+  </div>
+</section>
+
+<section id="compare">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="kicker"><span class="sw" style="background:#d6453a"></span>three ways into the sliver</div>
+      <h2>Plinko vs. WorkClaw vs. doing it yourself</h2>
+      <p>See how owning your harness compares to renting a platform or building in-house.</p>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Factor</th><th class="you">Plinko Harness</th><th>WorkClaw</th><th>In-house R&amp;D</th></tr></thead>
+        <tbody>
+          <tr><td>Typical team size</td><td class="you">Solopreneur to 10-person team</td><td>Any</td><td>10+ person dev team</td></tr>
+          <tr><td>Best for MRR</td><td class="you">$10k – $50k MRR+</td><td>$0 – $100k MRR</td><td>$100k MRR+</td></tr>
+          <tr><td>Platform fees</td><td class="you">None — open source</td><td>Required</td><td>None</td></tr>
+          <tr><td>AI credit costs</td><td class="you">You pay API provider directly</td><td>Markup + overages</td><td>You pay API provider directly</td></tr>
+          <tr><td>Data ownership</td><td class="you">You own everything</td><td>Hosted on their servers</td><td>You own everything</td></tr>
+          <tr><td>Time to launch</td><td class="you">14 – 30 days</td><td>Same day</td><td>3 – 6 months</td></tr>
+          <tr><td>Customization</td><td class="you">Built for your exact stack</td><td>Limited to their integrations</td><td>Unlimited (with dev team)</td></tr>
+          <tr><td>Lock-in</td><td class="you">None — open source</td><td>High — cancel = lose access</td><td>None</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="grid-4" style="margin-top:48px">
+      <div class="card"><span class="sw" style="background:#57b176"></span><h3>One-time cost</h3><p>Pay for the build once. No recurring platform subscription draining your budget.</p></div>
+      <div class="card"><span class="sw" style="background:#57b176"></span><h3>No credit gates</h3><p>Use your own API keys. No artificial usage limits or surprise overage bills.</p></div>
+      <div class="card"><span class="sw" style="background:#57b176"></span><h3>You own the code</h3><p>OpenClaw and Hermes are open-source. You control every integration and every workflow.</p></div>
+      <div class="card"><span class="sw" style="background:#57b176"></span><h3>Custom for your stack</h3><p>Not a generic template. Built around the tools your team actually uses.</p></div>
+    </div>
+    <div class="guarantee">
+      <h3>If it does not work, we fix it</h3>
+      <p>Every harness includes a 30-day fix window. If a workflow breaks or an integration fails, we repair it at no extra cost. No blame. Just a working system.</p>
+    </div>
+  </div>
+</section>
+
+<section style="background:var(--paper-2); border-top:1px solid var(--line); border-bottom:1px solid var(--line)">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="kicker"><span class="sw" style="background:#57b176"></span>11 five-star reviews</div>
+      <h2>What clients say</h2>
+      <p>From founders, operators, and professionals who have worked with Jonathan.</p>
+    </div>
+    <div class="t-grid" id="testimonials"></div>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="kicker"><span class="sw" style="background:#d9d5cc"></span>questions</div>
+      <h2>Questions</h2>
+    </div>
+    <div class="faq" id="faqs"></div>
+  </div>
+</section>
+
+<section class="final" style="background:var(--paper-2); border-top:1px solid var(--line)">
+  <div class="wrap">
+    <div class="kicker"><span class="sw" style="background:#d6453a"></span>2,500 dots. one is yours.</div>
+    <h2>99.96% of the world isn’t running this yet.</h2>
+    <p>That’s not a problem — it’s a head start. Book a strategy session and we’ll map the system that puts your business in the sliver.</p>
+    <a class="btn btn-red" href="https://cal.com/jonathan-mclemore-t2zmlc/steppingstones?duration=15">Book Your Strategy Session</a>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <h3>Jonathan McLemore</h3>
+        <div class="foot-role">Founder, Plinko Solutions</div>
+        <p>Customer Success Manager in enterprise content management. I build practical AI harnesses for lean teams using OpenClaw, Hermes, and Claude. No jargon. Just systems that work.</p>
+      </div>
+      <div class="foot-links">
+        <a href="https://plinkosolutions.com">Plinko Solutions</a>
+        <a href="https://www.linkedin.com/in/jonathan-mclemore-997712175/">LinkedIn</a>
+        <a href="https://cal.com/jonathan-mclemore-t2zmlc/steppingstones?duration=15">Book a Session</a>
+      </div>
+    </div>
+    <div class="foot-base">
+      <span>© 2026 Plinko Solutions · Built with OpenClaw and Hermes</span>
+      <span class="foot-legend">
+        <span><span class="sw" style="background:#d9d5cc"></span>never used AI</span>
+        <span><span class="sw" style="background:#57b176"></span>chatbot</span>
+        <span><span class="sw" style="background:#e3a51c"></span>pays $20/mo</span>
+        <span><span class="sw" style="background:#d6453a"></span>runs a harness</span>
+      </span>
+    </div>
+  </div>
+</footer>
+
+<script>
+const COLORS = { grey:'#d9d5cc', green:'#57b176', amber:'#e3a51c', red:'#d6453a' };
+const STAGES = [
+  { sw: COLORS.grey,  stat: '84% · never used AI',            big: '8.1B',   title: 'Most of the world has never touched AI.', body: 'Each dot is ~3.2 million people. About 6.8 billion of them have never used an AI tool — not once. That includes most of the people running businesses like yours.' },
+  { sw: COLORS.green, stat: '16% · free chatbot users',        big: '1.3B',   title: 'A billion people ask a chatbot questions.', body: 'They prompt, paste, and copy the answer back out. Useful — but it’s a conversation, not a system. Nothing runs unless they’re sitting there typing.' },
+  { sw: COLORS.amber, stat: '~0.3% · pays $20/mo for AI',      big: '15–25M', title: 'A thin band pays for the privilege.', body: 'Power users with a subscription. Better models, same workflow: they still do the research, the drafting, and the follow-up themselves — one chat at a time.' },
+  { sw: COLORS.red,   stat: '~0.04% · runs an agent harness',  big: '2–5M',   title: 'Then there’s the red dot.', body: 'A few million people run AI as a system — agents that research, draft, follow up, and report inside their own tools, around the clock. That sliver is where the leverage lives. Plinko puts your business in it.', cta: true },
+];
+
+// captions
+const capWrap = document.getElementById('captions');
+STAGES.forEach((s, i) => {
+  const d = document.createElement('div');
+  d.className = 'story-caption' + (i === 0 ? ' on' : '');
+  d.innerHTML = `
+    <div class="story-stat"><span class="sw" style="background:${s.sw}"></span>${s.stat}</div>
+    <div class="big">${s.big}</div>
+    <h2>${s.title}</h2>
+    <p>${s.body}</p>
+    ${s.cta ? '<a class="btn btn-red" href="https://cal.com/jonathan-mclemore-t2zmlc/steppingstones?duration=15">Become the red dot &rarr;</a>' : ''}`;
+  capWrap.appendChild(d);
+});
+
+// tools
+const TOOLS = ['Claude Cowork','OpenClaw','Hermes','Slack','Gmail','Google Workspace','Notion','Airtable','HubSpot','Salesforce','Calendly','Custom APIs'];
+document.getElementById('tools').innerHTML = TOOLS.map(t => `<span class="tool"><span class="sw"></span>${t}</span>`).join('');
+
+// testimonials
+const T = [
+  ['Ali M.','April 2026','Very down to earth as a person, as a mentor he’s great and so dedicated I would like to experience his service in every lifetime!!'],
+  ['Nate G.','April 2026','Every time I’ve collaborated with Jonathan, he’s brought specialized knowledge and value to the table, along with a can-do spirit that moves projects forward. He’s a bit of a secret weapon when it comes to business efficiency and smarter system design.'],
+  ['David M.','April 2026','Jonathan is really informed with everything AI. He helped me set up my OpenClaw and has been super helpful in boosting my productivity through his teachings.'],
+  ['Patrick F.','April 2026','Highly recommend Jon as he has been my trusted source of all things AI and beyond. He’s diligent, hard working, and knows his stuff.'],
+  ['Danyal K.','April 2026','Jonathan’s been a blessing. The guy knows his stuff and is always communicative!'],
+  ['Elvira D.','April 2026','Jonathan is one of the most genuine, knowledgeable, and supportive people I’ve worked with. He leads with professionalism, great energy, and real passion for helping others succeed.'],
+  ['Joshua W.','April 2026','I can say with absolute certainty that Jonathan is an excellent coach that offers a wealth of knowledge! No matter the situation, I can rely on Jonathan to help me navigate to the most optimal and ideal solution.'],
+  ['Julia C.','April 2026','He is the absolute best. Always comes with great energy, passion, clarity and knowledge. He is professional and well spoken, and I received all materials in a timely manner.'],
+  ['Nasser A.','April 2026','Jonathan has been very professional in providing support. He has been extremely helpful, even with the more tedious details.'],
+  ['Shabbir N.','April 2026','Jonathan is a man of many talents. His attention to detail and documentation is the stuff of legends. Any interactions you’ll have with him will leave you walking away having learned something new.'],
+  ['Carlos F.','April 2026','Speaking with Jonathan is the closest thing to talking with a genius. His depth of knowledge across different technology systems is truly remarkable — hands down the best coach I’ve worked with.'],
+];
+document.getElementById('testimonials').innerHTML = T.map(([n, d, q]) => `
+  <div class="t-card"><blockquote>“${q}”</blockquote>
+  <div class="t-who"><span class="t-av">${n.split(' ').map(w => w[0]).join('')}</span>
+  <span><span class="t-name">${n}</span><br><span class="t-date">${d}</span></span></div></div>`).join('');
+
+// faq
+const FAQS = [
+  ['What does “be the red dot” actually mean?','Of roughly 8.1 billion people, only ~0.04% — a few million — run AI as an operating system rather than a chat window. The red dot is shorthand for that tier: agents that research, draft, follow up, and report inside your own tools. Plinko builds you into it without you needing a dev team.'],
+  ['What is an AI harness and why do I need one?','An AI harness is a configured system of AI agents, tools, and workflows that automates repetitive business work. You need one when your team spends too much time on research, drafting, follow-ups, data entry, and reporting instead of closing deals and serving clients. A harness connects Claude, OpenClaw, and Hermes to your existing tools and runs them with approval gates for sensitive actions.'],
+  ['What is Claude Cowork for business?','Claude Cowork means configuring Anthropic’s Claude AI as an active coworker inside your tools — handling research, drafting, follow-ups, and operations through OpenClaw and Hermes, with human approval on sensitive actions.'],
+  ['How is this different from WorkClaw?','WorkClaw charges monthly fees plus AI credits — you rent access. Plinko builds a harness you own outright: one-time cost, no recurring platform fees, no credit gates. You control the infrastructure and the data.'],
+  ['What tools can the harness connect to?','Slack, Gmail, Google Workspace, Notion, Airtable, HubSpot, Salesforce, Calendly, and most tools with an API. We can also build custom integrations for proprietary or industry-specific tools.'],
+  ['How long does it take to set up?','The Starter Harness is delivered in 14 days. The Business Harness typically takes 21–30 days depending on complexity. Both include a Strategy Session, build and configuration, and handoff with team training.'],
+  ['Is my data safe?','Yes. The harness runs on infrastructure you control — typically a private VPS or your existing cloud account. We do not host your data. OpenClaw and Hermes run locally or on your servers, and all workflows include approval gates for sensitive actions.'],
+  ['Do I need technical skills?','No. The harness is built for business users, not developers. We handle all technical setup, integration, and configuration. After handoff, your team interacts with the harness through familiar tools like Slack and email, with documentation and training included.'],
+];
+document.getElementById('faqs').innerHTML = FAQS.map(([q, a]) => `<details><summary>${q}</summary><p>${a}</p></details>`).join('');
+
+// ===== dot story canvas =====
+(() => {
+  const COLS = 50, ROWS = 50, GREEN_COUNT = 400, AMBER_COUNT = 7;
+  const wrap = document.getElementById('story');
+  const canvas = document.getElementById('dots');
+  const caps = capWrap.children;
+  const hint = document.getElementById('hint');
+  const ctx = canvas.getContext('2d');
+  let w = 0, h = 0, p = 0, currentStage = 0;
+  const clamp = v => Math.max(0, Math.min(1, v));
+
+  const resize = () => {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const r = canvas.getBoundingClientRect();
+    w = r.width; h = r.height;
+    canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  };
+  const onScroll = () => {
+    const r = wrap.getBoundingClientRect();
+    p = clamp(-r.top / Math.max(r.height - innerHeight, 1));
+  };
+  const rounded = typeof ctx.roundRect === 'function';
+
+  const draw = (t) => {
+    ctx.clearRect(0, 0, w, h);
+    const size = Math.min(w, h), cell = size / COLS;
+    const ox = (w - size) / 2, oy = (h - size) / 2;
+    const s = Math.max(1, cell * 0.78);
+    const greenN = Math.round(GREEN_COUNT * clamp((p - 0.2) / 0.2));
+    const amberN = Math.round(AMBER_COUNT * clamp((p - 0.48) / 0.16));
+    const redOn = p > 0.72;
+
+    for (let row = 0; row < ROWS; row++) for (let col = 0; col < COLS; col++) {
+      const bottomRow = ROWS - 1 - row;
+      const idx = bottomRow * COLS + col;
+      const isRed = bottomRow === 0 && col === COLS - 1;
+      const amberSlot = bottomRow === 0 && col >= COLS - 1 - AMBER_COUNT && col < COLS - 1 ? col - (COLS - 1 - AMBER_COUNT) : -1;
+      let color = COLORS.grey;
+      if (idx < greenN) color = COLORS.green;
+      if (amberSlot >= 0 && amberSlot < amberN) color = COLORS.amber;
+      if (isRed && redOn) color = COLORS.red;
+      ctx.fillStyle = color;
+      if (rounded) { ctx.beginPath(); ctx.roundRect(ox + col * cell, oy + row * cell, s, s, s * 0.28); ctx.fill(); }
+      else ctx.fillRect(ox + col * cell, oy + row * cell, s, s);
+    }
+    if (redOn) {
+      const cx = ox + (COLS - 1) * cell + s / 2, cy = oy + (ROWS - 1) * cell + s / 2;
+      const ph = (t % 1800) / 1800;
+      ctx.strokeStyle = `rgba(214,69,58,${0.55 * (1 - ph)})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(cx, cy, s * 0.8 + ph * s * 2.6, 0, Math.PI * 2); ctx.stroke();
+    }
+    const next = p < 0.2 ? 0 : p < 0.48 ? 1 : p < 0.72 ? 2 : 3;
+    if (next !== currentStage) {
+      currentStage = next;
+      for (let i = 0; i < caps.length; i++) caps[i].classList.toggle('on', i === next);
+      hint.style.display = next === 0 ? '' : 'none';
+    }
+    requestAnimationFrame(draw);
+  };
+
+  resize(); onScroll();
+  addEventListener('resize', resize);
+  addEventListener('scroll', onScroll, { passive: true });
+  requestAnimationFrame(draw);
+})();
+</script>
+</body>
+</html>

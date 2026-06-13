@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PREVIEW — The Red Dot Project | Plinko Solutions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;1,400;1,500&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap">
+<style>
+:root {
+  --paper: #faf8f3; --paper-2: #f3f0e9; --ink: #211e1a; --muted: #8a8478; --line: #e5e1d8;
+  --dot-grey: #d9d5cc; --green: #57b176; --green-deep: #3e9c63; --green-dark: #2c7a4b;
+  --amber: #e3a51c; --red: #d6453a; --red-dark: #b9342a;
+  --serif: 'Newsreader', Georgia, serif; --mono: 'IBM Plex Mono', monospace; --sans: 'Inter', sans-serif;
+  --maxw: 1080px; --radius: 10px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body { background: var(--paper); color: var(--ink); font-family: var(--sans); font-size: 17px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+h1, h2, h3 { font-family: var(--serif); font-weight: 500; line-height: 1.12; letter-spacing: -0.01em; }
+a { color: inherit; }
+.wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; width: 100%; }
+.kicker { font-family: var(--mono); font-size: 13px; letter-spacing: .06em; color: var(--muted); display: flex; align-items: center; gap: 10px; justify-content: center; }
+.kicker .sw { width: 11px; height: 11px; border-radius: 3px; flex: none; }
+.sw { display: inline-block; border-radius: 3px; }
+.section-head { text-align: center; max-width: 640px; margin: 0 auto 56px; }
+.section-head h2 { font-size: clamp(30px, 4.4vw, 44px); margin: 14px 0 16px; }
+.nav { position: fixed; top: 0; left: 0; right: 0; z-index: 50; background: rgba(250,248,243,.88); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+.nav-inner { max-width: var(--maxw); margin: 0 auto; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.brand { display: flex; align-items: center; gap: 10px; font-family: var(--serif); font-size: 20px; font-weight: 600; text-decoration: none; }
+.brand-dots { display: grid; grid-template-columns: repeat(2, 8px); gap: 3px; }
+.brand-dots span { width: 8px; height: 8px; border-radius: 2px; background: var(--dot-grey); }
+.brand-dots span:nth-child(3) { background: var(--green); }
+.brand-dots span:nth-child(4) { background: var(--red); }
+.nav-links { display: flex; align-items: center; gap: 26px; font-size: 14.5px; }
+.nav-links a { text-decoration: none; color: var(--muted); }
+.nav-links a:hover { color: var(--ink); }
+.btn { display: inline-block; text-decoration: none; font-weight: 600; font-size: 15px; padding: 12px 22px; border-radius: 8px; border: none; cursor: pointer; transition: transform .12s, background .15s; font-family: var(--sans); }
+.btn:hover { transform: translateY(-1px); }
+.btn-green { background: var(--green-deep); color: #fff; }
+.btn-red { background: var(--red); color: #fff; }
+.btn-red:hover { background: var(--red-dark); }
+.btn-ghost { background: transparent; color: var(--ink); border: 1.5px solid var(--line); }
+.btn-xl { font-size: 17px; padding: 16px 34px; }
+.nav .btn { padding: 9px 16px; font-size: 14px; }
+@media (max-width: 760px) { .nav-links a:not(.btn) { display: none; } }
+.story { height: 520vh; position: relative; }
+.story-sticky { position: sticky; top: 0; height: 100vh; height: 100svh; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.story-grid { width: 100%; max-width: 1180px; height: 100%; display: grid; grid-template-columns: minmax(320px, 460px) 1fr; gap: 24px; align-items: center; padding: 76px 24px 24px; }
+.story-canvas { position: relative; height: min(82vh, 760px); }
+.story-canvas canvas { width: 100%; height: 100%; display: block; }
+.story-captions { position: relative; min-height: 360px; }
+.story-caption { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; opacity: 0; transform: translateY(18px); transition: opacity .45s ease, transform .45s ease; pointer-events: none; }
+.story-caption.on { opacity: 1; transform: none; pointer-events: auto; }
+.story-stat { font-family: var(--mono); font-size: 14px; display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+.story-stat .sw { width: 12px; height: 12px; }
+.story-caption h2 { font-size: clamp(30px, 3.6vw, 46px); margin-bottom: 16px; }
+.story-caption p { color: var(--muted); font-size: 17px; max-width: 400px; }
+.story-caption .big { font-family: var(--serif); font-size: clamp(54px, 6vw, 84px); line-height: 1; margin-bottom: 10px; }
+.story-caption .btn { margin-top: 26px; align-self: flex-start; }
+.story-meta { position: absolute; top: 84px; left: 0; right: 0; text-align: center; font-family: var(--mono); font-size: 12.5px; color: var(--muted); }
+.story-hint { position: absolute; bottom: 22px; left: 0; right: 0; text-align: center; font-family: var(--mono); font-size: 12px; color: var(--muted); animation: bob 2.2s ease-in-out infinite; }
+@keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(6px); } }
+@media (max-width: 860px) {
+  .story-grid { grid-template-columns: 1fr; grid-template-rows: 1fr auto; gap: 8px; padding-top: 64px; }
+  .story-canvas { height: 46vh; order: -1; }
+  .story-captions { min-height: 300px; }
+  .story-caption { justify-content: flex-start; }
+  .story-caption h2 { font-size: 26px; }
+  .story-caption .big { font-size: 48px; }
+}
+@keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(214,69,58,.45); } 50% { box-shadow: 0 0 0 12px rgba(214,69,58,0); } }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+@media (max-width: 900px) { .grid-3 { grid-template-columns: 1fr; } }
+.card { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 28px; }
+.card h3 { font-size: 20px; margin: 14px 0 10px; }
+.card p { color: var(--muted); font-size: 15.5px; }
+.step-n { font-family: var(--mono); font-size: 13px; color: var(--green-dark); display: inline-flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.step-dots { display: inline-flex; gap: 4px; }
+.step-dots span { width: 9px; height: 9px; border-radius: 2.5px; background: var(--dot-grey); }
+.step-dots span.f { background: var(--green); }
+.panel { min-height: 92vh; display: flex; align-items: center; padding: 96px 0; }
+.panel.alt { background: var(--paper-2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.manifesto { background: var(--ink); color: var(--paper); text-align: center; }
+.manifesto-kicker { font-family: var(--mono); font-size: 13px; letter-spacing: .08em; color: var(--green); margin-bottom: 24px; }
+.manifesto h2 { font-size: clamp(34px, 5.6vw, 64px); max-width: 880px; margin: 0 auto; font-weight: 400; }
+.manifesto h2 em { font-style: italic; color: var(--green); }
+.manifesto .red-dot { display: inline-block; width: .55em; height: .55em; border-radius: .14em; background: var(--red); margin-left: .12em; animation: pulse 2s infinite; }
+.manifesto-sub { color: #b8b2a6; max-width: 600px; margin: 24px auto 34px; }
+.offer-split { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 40px; }
+@media (max-width: 760px) { .offer-split { grid-template-columns: 1fr; } }
+.offer-card { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 32px; }
+.offer-tag { display: inline-block; color: #fff; font-family: var(--mono); font-size: 12px; letter-spacing: .06em; padding: 5px 13px; border-radius: 99px; margin-bottom: 16px; }
+.offer-card h3 { font-size: 24px; margin-bottom: 14px; }
+.offer-card ul { list-style: none; }
+.offer-card li { padding: 8px 0; font-size: 15.5px; color: var(--muted); display: flex; gap: 10px; align-items: baseline; }
+.offer-card li::before { content: ''; width: 9px; height: 9px; border-radius: 2.5px; background: var(--green); flex: none; position: relative; top: 1px; }
+.offer-price { text-align: center; max-width: 620px; margin: 0 auto; }
+.price { font-family: var(--serif); font-size: 56px; }
+.price small { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+.pledge-line { color: var(--muted); font-size: 15.5px; margin: 18px 0 28px; }
+.trust-row { display: flex; gap: 22px; justify-content: center; flex-wrap: wrap; margin-top: 18px; font-family: var(--mono); font-size: 12.5px; color: var(--muted); }
+.trust-row span { display: flex; align-items: center; gap: 7px; }
+.trust-row span::before { content: ''; width: 8px; height: 8px; border-radius: 2px; background: var(--green); }
+.proof-wrap { display: grid; grid-template-columns: 1.1fr 1fr; gap: 56px; align-items: center; }
+@media (max-width: 820px) { .proof-wrap { grid-template-columns: 1fr; } }
+.proof-wrap h2 { font-size: clamp(28px, 3.8vw, 40px); margin: 14px 0 16px; }
+.proof-body { color: var(--muted); margin-bottom: 26px; }
+.proof-quotes { display: grid; gap: 16px; }
+.proof-quotes blockquote { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 20px 24px; font-family: var(--serif); font-style: italic; font-size: 15.5px; }
+.proof-quotes span { display: block; margin-top: 10px; font-family: var(--mono); font-style: normal; font-size: 12.5px; color: var(--muted); }
+.final-impact { text-align: center; background: var(--paper-2); border-top: 1px solid var(--line); }
+.final-impact h2 { font-size: clamp(34px, 5vw, 56px); margin: 16px 0 30px; }
+footer { background: var(--ink); color: #b8b2a6; padding: 36px 0; font-family: var(--mono); font-size: 12px; }
+.foot-base { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.foot-legend { display: flex; gap: 16px; flex-wrap: wrap; }
+.foot-legend span { display: flex; align-items: center; gap: 6px; }
+.foot-legend .sw { width: 9px; height: 9px; }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="#">
+      <span class="brand-dots"><span></span><span></span><span></span><span></span></span>
+      The Red Dot Project
+    </a>
+    <div class="nav-links">
+      <a href="#offer">The Offer</a>
+      <a href="#partners">Partners</a>
+      <a class="btn btn-red" href="preview-start.html">Become a Founding Sponsor</a>
+    </div>
+  </div>
+</nav>
+
+<section class="story" id="story">
+  <div class="story-sticky">
+    <div class="story-meta">2,500 dots = 8.1 billion humans &middot; color = most advanced AI interaction, Feb 2026</div>
+    <div class="story-grid">
+      <div class="story-captions" id="captions"></div>
+      <div class="story-canvas"><canvas id="dots"></canvas></div>
+    </div>
+    <div class="story-hint" id="hint">scroll &darr;</div>
+  </div>
+</section>
+
+<section class="panel manifesto">
+  <div class="wrap">
+    <p class="manifesto-kicker">the red dot project</p>
+    <h2>We believe the people <em>winning with AI</em> should fund the kids <em>winning on the field</em><span class="red-dot"></span></h2>
+  </div>
+</section>
+
+<section class="panel" id="offer">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="kicker"><span class="sw" style="background:#d6453a"></span>the whole offer, in one screen</div>
+      <h2>One membership. Two outcomes.</h2>
+    </div>
+    <div class="offer-split">
+      <div class="offer-card">
+        <div class="offer-tag" style="background:var(--green-deep)">you get</div>
+        <h3>AI onboarding in plain English</h3>
+        <ul>
+          <li>A 2-minute quiz that finds your starting point — no jargon, no tech skills needed</li>
+          <li>A simple monthly path: one real task at a time, from your actual life and work</li>
+          <li>Live monthly walkthrough + a place to ask anything</li>
+        </ul>
+      </div>
+      <div class="offer-card">
+        <div class="offer-tag" style="background:var(--red)">a kid gets</div>
+        <h3>A season to play. A fund to learn.</h3>
+        <ul>
+          <li>Registration fees and gear for youth sports programs</li>
+          <li>Contributions to education funds in partner communities</li>
+          <li>A monthly impact report — you see exactly where it goes</li>
+        </ul>
+      </div>
+    </div>
+    <div class="offer-price">
+      <div class="price">$49<small>/month · founding rate, locked for life</small></div>
+      <p class="pledge-line"><strong>The founding pledge:</strong> 50% of every founding membership is pledged to youth sports &amp; education programs. We’re forming our first partnerships now — founding members vote on them and get the receipts.</p>
+      <a class="btn btn-red btn-xl" href="preview-start.html">Become a Founding Sponsor &rarr;</a>
+      <div class="trust-row"><span>cancel anytime</span><span>founding price locked</span><span>no tech skills needed</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="panel alt">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="kicker"><span class="sw" style="background:#57b176"></span>three steps, two minutes</div>
+      <h2>How it works</h2>
+    </div>
+    <div class="grid-3">
+      <div class="card"><div class="step-n">01 <span class="step-dots"><span class="f"></span><span></span><span></span></span></div><h3>Find your dot</h3><p>Take the 2-minute quiz. Four plain questions — it tells you exactly where you’re starting from. Most of our crowd starts in the grey. Perfect.</p></div>
+      <div class="card"><div class="step-n">02 <span class="step-dots"><span class="f"></span><span class="f"></span><span></span></span></div><h3>Become a sponsor</h3><p>One membership, $49/month. You start your AI path the same day a kid’s season gets closer to funded.</p></div>
+      <div class="card"><div class="step-n">03 <span class="step-dots"><span class="f"></span><span class="f"></span><span class="f"></span></span></div><h3>See both scoreboards</h3><p>Every month: what you learned to do with AI, and what the fund did for kids. Two numbers, one email.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="wrap proof-wrap">
+    <div>
+      <div class="kicker" style="justify-content:flex-start"><span class="sw" style="background:#e3a51c"></span>who’s behind this</div>
+      <h2>A coach’s patience. A builder’s receipts.</h2>
+      <p class="proof-body">Jonathan McLemore builds AI systems for businesses for a living. The Red Dot Project is the other half of that work: taking what the 0.04% know and walking everyday people into it — while the membership money does something that matters.</p>
+      <a class="btn btn-ghost" href="preview.html">See the business side &rarr;</a>
+    </div>
+    <div class="proof-quotes">
+      <blockquote>“As a mentor he’s great and so dedicated I would like to experience his service in every lifetime!”<span>— Ali M.</span></blockquote>
+      <blockquote>“He helped me set up my AI and has been super helpful in boosting my productivity through his teachings.”<span>— David M.</span></blockquote>
+      <blockquote>“The help he provides is always delivered in a digestible manner — one that helps me understand it quickly.”<span>— Joshua W.</span></blockquote>
+    </div>
+  </div>
+</section>
+
+<section class="panel manifesto" id="partners">
+  <div class="wrap">
+    <p class="manifesto-kicker">founding partners wanted</p>
+    <h2>Run a league, club, or school program? <em>Let’s put your kids on the receiving end.</em></h2>
+    <p class="manifesto-sub">We’re selecting the first partner programs now. Partners get funding from the founding pool, their story told to our members, and free AI onboarding for their staff and parents.</p>
+    <a class="btn btn-green" href="mailto:ai@twlv20.com?subject=Founding%20Partner%20—%20Plinko%20Impact">Become a Founding Partner</a>
+  </div>
+</section>
+
+<section class="panel final-impact">
+  <div class="wrap">
+    <div class="kicker"><span class="sw" style="background:#d6453a"></span>2,500 dots. one is yours. one is theirs.</div>
+    <h2>Find your dot. Fund their season.</h2>
+    <a class="btn btn-red btn-xl" href="preview-start.html">Become a Founding Sponsor &rarr;</a>
+    <div class="trust-row"><span>2-minute quiz first</span><span>cancel anytime</span><span>50% pledged to kids</span></div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot-base">
+    <span>© 2026 Plinko Solutions · The Red Dot Project</span>
+    <span class="foot-legend">
+      <span><span class="sw" style="background:#d9d5cc"></span>never used AI</span>
+      <span><span class="sw" style="background:#57b176"></span>learning</span>
+      <span><span class="sw" style="background:#d6453a"></span>sponsoring</span>
+    </span>
+  </div>
+</footer>
+
+<script>
+const COLORS = { grey:'#d9d5cc', green:'#57b176', amber:'#e3a51c', red:'#d6453a' };
+const STAGES = [
+  { sw: COLORS.grey,  stat: '84% · never used AI',        big: '8.1B',   title: 'Most of the world has never touched AI.', body: 'Each dot is ~3.2 million people. If AI feels like it’s not for you — you’re literally the majority. This page is for you.' },
+  { sw: COLORS.green, stat: '16% · tried a free chatbot', big: '1.3B',   title: 'Some people ask it questions.', body: 'Helpful. But it doesn’t change your week, your work, or what your community can afford.' },
+  { sw: COLORS.amber, stat: '~0.3% · pays for AI',        big: '15–25M', title: 'A few pay $20 a month for it.', body: 'Mostly tech people, mostly for work. The benefits stay inside the same small circle.' },
+  { sw: COLORS.red,   stat: '~0.04% · runs AI systems',   big: '2–5M',   title: 'Then there’s the red dot.', body: 'A tiny group gets real leverage from AI. We think that leverage should pay for something bigger — like kids playing sports and staying in school.', cta: { href: '#offer', text: 'See how it works ↓' } },
+];
+const capWrap = document.getElementById('captions');
+STAGES.forEach((s, i) => {
+  const d = document.createElement('div');
+  d.className = 'story-caption' + (i === 0 ? ' on' : '');
+  d.innerHTML = `
+    <div class="story-stat"><span class="sw" style="background:${s.sw}"></span>${s.stat}</div>
+    <div class="big">${s.big}</div><h2>${s.title}</h2><p>${s.body}</p>
+    ${s.cta ? `<a class="btn btn-red" href="${s.cta.href}">${s.cta.text}</a>` : ''}`;
+  capWrap.appendChild(d);
+});
+
+(() => {
+  const COLS = 50, ROWS = 50, GREEN_COUNT = 400, AMBER_COUNT = 7;
+  const wrap = document.getElementById('story');
+  const canvas = document.getElementById('dots');
+  const caps = capWrap.children;
+  const hint = document.getElementById('hint');
+  const ctx = canvas.getContext('2d');
+  let w = 0, h = 0, p = 0, currentStage = 0;
+  const clamp = v => Math.max(0, Math.min(1, v));
+  const resize = () => {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const r = canvas.getBoundingClientRect();
+    w = r.width; h = r.height;
+    canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  };
+  const onScroll = () => {
+    const r = wrap.getBoundingClientRect();
+    p = clamp(-r.top / Math.max(r.height - innerHeight, 1));
+  };
+  const rounded = typeof ctx.roundRect === 'function';
+  const draw = (t) => {
+    ctx.clearRect(0, 0, w, h);
+    const size = Math.min(w, h), cell = size / COLS;
+    const ox = (w - size) / 2, oy = (h - size) / 2;
+    const s = Math.max(1, cell * 0.78);
+    const greenN = Math.round(GREEN_COUNT * clamp((p - 0.2) / 0.2));
+    const amberN = Math.round(AMBER_COUNT * clamp((p - 0.48) / 0.16));
+    const redOn = p > 0.72;
+    for (let row = 0; row < ROWS; row++) for (let col = 0; col < COLS; col++) {
+      const bottomRow = ROWS - 1 - row;
+      const idx = bottomRow * COLS + col;
+      const isRed = bottomRow === 0 && col === COLS - 1;
+      const amberSlot = bottomRow === 0 && col >= COLS - 1 - AMBER_COUNT && col < COLS - 1 ? col - (COLS - 1 - AMBER_COUNT) : -1;
+      let color = COLORS.grey;
+      if (idx < greenN) color = COLORS.green;
+      if (amberSlot >= 0 && amberSlot < amberN) color = COLORS.amber;
+      if (isRed && redOn) color = COLORS.red;
+      ctx.fillStyle = color;
+      if (rounded) { ctx.beginPath(); ctx.roundRect(ox + col * cell, oy + row * cell, s, s, s * 0.28); ctx.fill(); }
+      else ctx.fillRect(ox + col * cell, oy + row * cell, s, s);
+    }
+    if (redOn) {
+      const cx = ox + (COLS - 1) * cell + s / 2, cy = oy + (ROWS - 1) * cell + s / 2;
+      const ph = (t % 1800) / 1800;
+      ctx.strokeStyle = `rgba(214,69,58,${0.55 * (1 - ph)})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(cx, cy, s * 0.8 + ph * s * 2.6, 0, Math.PI * 2); ctx.stroke();
+    }
+    const next = p < 0.2 ? 0 : p < 0.48 ? 1 : p < 0.72 ? 2 : 3;
+    if (next !== currentStage) {
+      currentStage = next;
+      for (let i = 0; i < caps.length; i++) caps[i].classList.toggle('on', i === next);
+      hint.style.display = next === 0 ? '' : 'none';
+    }
+    requestAnimationFrame(draw);
+  };
+  resize(); onScroll();
+  addEventListener('resize', resize);
+  addEventListener('scroll', onScroll, { passive: true });
+  requestAnimationFrame(draw);
+})();
+</script>
+</body>
+</html>
