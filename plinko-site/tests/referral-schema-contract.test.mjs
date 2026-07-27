@@ -100,7 +100,7 @@ test('foreign keys and indexes support governed lookup paths', () => {
     /referral_attributions_referrer_user_id_fkey foreign key \(referrer_user_id\) references public\.member_profiles \(user_id\)/,
     /subscription_entitlements_user_id_fkey foreign key \(user_id\) references public\.member_profiles \(user_id\)/,
     /commission_ledger_referrer_user_id_fkey foreign key \(referrer_user_id\) references public\.member_profiles \(user_id\)/,
-    /payout_batch_items_payout_batch_id_fkey foreign key \(payout_batch_id\) references public\.payout_batches \(id\)/,
+    /payout_batch_items_batch_currency_fkey foreign key \(payout_batch_id, currency\) references public\.payout_batches \(id, currency\)/,
   ]) {
     assert.match(compact, relation);
   }
@@ -112,6 +112,71 @@ test('foreign keys and indexes support governed lookup paths', () => {
     'payout_batch_items_payout_batch_id_idx',
   ]) {
     assert.match(compact, new RegExp(`create index ${index} on public\\.`));
+  }
+});
+
+test('cross-row referral, commission, and payout ownership is bound by composite database keys', () => {
+  const links = tableBody('referral_links');
+  assert.match(links, /unique \(id, owner_user_id\)/);
+
+  const attributions = tableBody('referral_attributions');
+  assert.match(attributions, /unique \(id, referrer_user_id, referred_user_id\)/);
+  assert.match(
+    attributions,
+    /foreign key \(referral_link_id, referrer_user_id\) references public\.referral_links \(id, owner_user_id\)/,
+    'attribution referrer must be the owner of its referral link',
+  );
+  assert.doesNotMatch(
+    attributions,
+    /foreign key \(referral_link_id\) references public\.referral_links \(id\)/,
+    'an independent referral-link FK would permit a different referrer',
+  );
+
+  const entitlements = tableBody('subscription_entitlements');
+  assert.match(entitlements, /unique \(id, user_id\)/);
+
+  const ledger = tableBody('commission_ledger');
+  assert.match(ledger, /unique \(id, referrer_user_id, currency\)/);
+  assert.match(
+    ledger,
+    /foreign key \(referral_attribution_id, referrer_user_id, referred_user_id\) references public\.referral_attributions \(id, referrer_user_id, referred_user_id\)/,
+    'ledger parties must match its referral attribution',
+  );
+  assert.match(
+    ledger,
+    /foreign key \(subscription_entitlement_id, referred_user_id\) references public\.subscription_entitlements \(id, user_id\)/,
+    'ledger referred user must own its subscription entitlement',
+  );
+  assert.doesNotMatch(ledger, /foreign key \(referral_attribution_id\) references public\.referral_attributions \(id\)/);
+  assert.doesNotMatch(ledger, /foreign key \(subscription_entitlement_id\) references public\.subscription_entitlements \(id\)/);
+
+  const accounts = tableBody('payout_accounts');
+  assert.match(accounts, /unique \(id, user_id\)/);
+  const batches = tableBody('payout_batches');
+  assert.match(batches, /unique \(id, currency\)/);
+
+  const items = tableBody('payout_batch_items');
+  assert.match(
+    items,
+    /foreign key \(payout_batch_id, currency\) references public\.payout_batches \(id, currency\)/,
+    'item currency must match its payout batch',
+  );
+  assert.match(
+    items,
+    /foreign key \(payout_account_id, user_id\) references public\.payout_accounts \(id, user_id\)/,
+    'item recipient must own its payout account',
+  );
+  assert.match(
+    items,
+    /foreign key \(commission_ledger_id, user_id, currency\) references public\.commission_ledger \(id, referrer_user_id, currency\)/,
+    'item recipient and currency must match its commission ledger',
+  );
+  for (const independentForeignKey of [
+    /foreign key \(payout_batch_id\) references public\.payout_batches \(id\)/,
+    /foreign key \(payout_account_id\) references public\.payout_accounts \(id\)/,
+    /foreign key \(commission_ledger_id\) references public\.commission_ledger \(id\)/,
+  ]) {
+    assert.doesNotMatch(items, independentForeignKey, 'independent payout FKs would permit cross-row contradictions');
   }
 });
 

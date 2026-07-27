@@ -11,6 +11,7 @@ create table public.referral_links (
   owner_user_id text not null,
   code text unique not null check (code ~ '^[a-z0-9][a-z0-9_-]*$'),
   created_at timestamptz not null default now(),
+  constraint referral_links_id_owner_user_id_key unique (id, owner_user_id),
   constraint referral_links_owner_user_id_fkey foreign key (owner_user_id) references public.member_profiles (user_id)
 );
 
@@ -22,7 +23,8 @@ create table public.referral_attributions (
   capture_evidence jsonb not null default '{}'::jsonb,
   captured_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
-  constraint referral_attributions_referral_link_id_fkey foreign key (referral_link_id) references public.referral_links (id),
+  constraint referral_attributions_id_referrer_referred_key unique (id, referrer_user_id, referred_user_id),
+  constraint referral_attributions_link_owner_fkey foreign key (referral_link_id, referrer_user_id) references public.referral_links (id, owner_user_id),
   constraint referral_attributions_referrer_user_id_fkey foreign key (referrer_user_id) references public.member_profiles (user_id),
   constraint referral_attributions_referred_user_id_fkey foreign key (referred_user_id) references public.member_profiles (user_id),
   check (referrer_user_id <> referred_user_id)
@@ -38,6 +40,7 @@ create table public.subscription_entitlements (
   current_period_end timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
+  constraint subscription_entitlements_id_user_id_key unique (id, user_id),
   constraint subscription_entitlements_user_id_fkey foreign key (user_id) references public.member_profiles (user_id)
 );
 
@@ -45,8 +48,8 @@ create table public.commission_ledger (
   id bigint generated always as identity primary key,
   referrer_user_id text not null,
   referred_user_id text not null,
-  referral_attribution_id bigint,
-  subscription_entitlement_id bigint,
+  referral_attribution_id bigint not null,
+  subscription_entitlement_id bigint not null,
   source_invoice_id text unique not null,
   eligible_net_cents integer not null check (eligible_net_cents >= 0),
   commission_cents integer not null check (commission_cents >= 0),
@@ -57,10 +60,11 @@ create table public.commission_ledger (
   available_at timestamptz,
   state text check (state in ('pending', 'available', 'paid', 'reversed', 'void')) not null default 'pending',
   created_at timestamptz not null default now(),
+  constraint commission_ledger_id_referrer_currency_key unique (id, referrer_user_id, currency),
   constraint commission_ledger_referrer_user_id_fkey foreign key (referrer_user_id) references public.member_profiles (user_id),
   constraint commission_ledger_referred_user_id_fkey foreign key (referred_user_id) references public.member_profiles (user_id),
-  constraint commission_ledger_referral_attribution_id_fkey foreign key (referral_attribution_id) references public.referral_attributions (id),
-  constraint commission_ledger_subscription_entitlement_id_fkey foreign key (subscription_entitlement_id) references public.subscription_entitlements (id),
+  constraint commission_ledger_attribution_parties_fkey foreign key (referral_attribution_id, referrer_user_id, referred_user_id) references public.referral_attributions (id, referrer_user_id, referred_user_id),
+  constraint commission_ledger_entitlement_referred_user_fkey foreign key (subscription_entitlement_id, referred_user_id) references public.subscription_entitlements (id, user_id),
   check (referrer_user_id <> referred_user_id)
 );
 
@@ -71,6 +75,7 @@ create table public.payout_accounts (
   status text not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
+  constraint payout_accounts_id_user_id_key unique (id, user_id),
   constraint payout_accounts_user_id_fkey foreign key (user_id) references public.member_profiles (user_id)
 );
 
@@ -81,7 +86,8 @@ create table public.payout_batches (
   total_cents integer not null default 0 check (total_cents >= 0),
   approved_at timestamptz,
   paid_at timestamptz,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  constraint payout_batches_id_currency_key unique (id, currency)
 );
 
 create table public.payout_batch_items (
@@ -93,10 +99,10 @@ create table public.payout_batch_items (
   amount_cents integer not null check (amount_cents > 0),
   currency text not null check (currency ~ '^[a-z]{3}$'),
   created_at timestamptz not null default now(),
-  constraint payout_batch_items_payout_batch_id_fkey foreign key (payout_batch_id) references public.payout_batches (id),
   constraint payout_batch_items_user_id_fkey foreign key (user_id) references public.member_profiles (user_id),
-  constraint payout_batch_items_payout_account_id_fkey foreign key (payout_account_id) references public.payout_accounts (id),
-  constraint payout_batch_items_commission_ledger_id_fkey foreign key (commission_ledger_id) references public.commission_ledger (id)
+  constraint payout_batch_items_batch_currency_fkey foreign key (payout_batch_id, currency) references public.payout_batches (id, currency),
+  constraint payout_batch_items_account_owner_fkey foreign key (payout_account_id, user_id) references public.payout_accounts (id, user_id),
+  constraint payout_batch_items_ledger_referrer_currency_fkey foreign key (commission_ledger_id, user_id, currency) references public.commission_ledger (id, referrer_user_id, currency)
 );
 
 create table public.stripe_webhook_events (
