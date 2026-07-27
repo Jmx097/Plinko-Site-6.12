@@ -48,6 +48,7 @@ test('throws when a Plinko Solutions Core URL is invalid', async () => {
     '   ',
     'javascript:alert(1)',
     'http://example.com',
+    'https://user:pass@example.com',
     'not a url',
   ];
 
