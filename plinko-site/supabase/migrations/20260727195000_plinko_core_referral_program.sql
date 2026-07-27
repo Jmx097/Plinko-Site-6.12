@@ -174,12 +174,6 @@ begin
        or new.submission_idempotency_key is distinct from old.submission_idempotency_key or new.submission_claimed_at is distinct from old.submission_claimed_at
        or new.external_transfer_id is distinct from old.external_transfer_id or new.submitted_at is distinct from old.submitted_at
        or new.paid_at is null or new.paid_at < old.submitted_at then raise exception 'paid payout batch requires paid_at after submitted_at'; end if;
-  elsif old.status = 'submitted' and new.status = 'void' then
-    if new.currency is distinct from old.currency or new.created_at is distinct from old.created_at or new.approved_at is distinct from old.approved_at
-       or new.submission_idempotency_key is distinct from old.submission_idempotency_key or new.submission_claimed_at is distinct from old.submission_claimed_at
-       or new.external_transfer_id is distinct from old.external_transfer_id or new.submitted_at is distinct from old.submitted_at or new.paid_at is not null then
-      raise exception 'voided submitted payout batch must retain submission metadata';
-    end if;
   else raise exception 'invalid payout batch lifecycle transition from % to %', old.status, new.status;
   end if;
   return new;
@@ -190,24 +184,25 @@ create trigger payout_batches_lifecycle_trigger before insert or update on publi
 
 create function public.validate_payout_batch_item()
 returns trigger language plpgsql security definer set search_path = pg_catalog as $$
-declare ledger_state text; ledger_commission_cents integer; account_status text; batch_status text;
+declare ledger_state text; ledger_commission_cents integer; account_status text; batch_status text; batch_id bigint;
 begin
+  if tg_op in ('DELETE', 'UPDATE') then batch_id := old.payout_batch_id; else batch_id := new.payout_batch_id; end if;
+  select status into batch_status from public.payout_batches where id = batch_id for update;
+  if not found or batch_status <> 'draft' then raise exception 'payout items may only be changed in a draft batch'; end if;
+  if tg_op = 'DELETE' then return old; end if;
   if tg_op = 'UPDATE' then
-    select status into batch_status from public.payout_batches where id = old.payout_batch_id;
-    if not found or batch_status <> 'draft' then raise exception 'payout items may only be changed in a draft batch'; end if;
     if new.commission_cents_snapshot is distinct from old.commission_cents_snapshot or new.commission_ledger_id is distinct from old.commission_ledger_id
        or new.payout_batch_id is distinct from old.payout_batch_id or new.user_id is distinct from old.user_id
        or new.payout_account_id is distinct from old.payout_account_id or new.currency is distinct from old.currency then
       raise exception 'payout item ownership and commission snapshot are immutable';
     end if;
   end if;
-  if tg_op = 'DELETE' then return old; end if;
-  select ledger.state, ledger.commission_cents, account.status, batch.status into ledger_state, ledger_commission_cents, account_status, batch_status
+  select ledger.state, ledger.commission_cents, account.status into ledger_state, ledger_commission_cents, account_status
     from public.commission_ledger ledger join public.payout_accounts account on account.id = new.payout_account_id and account.user_id = new.user_id
     join public.payout_batches batch on batch.id = new.payout_batch_id and batch.currency = new.currency
     where ledger.id = new.commission_ledger_id and ledger.referrer_user_id = new.user_id and ledger.currency = new.currency;
   if not found then raise exception 'payout item recipient, account, ledger, currency, or batch is inconsistent'; end if;
-  if batch_status <> 'draft' then raise exception 'payout items may only be changed in a draft batch'; end if;
+
   if ledger_state <> 'available' then raise exception 'payout item ledger must be available'; end if;
   if account_status <> 'active' then raise exception 'payout item account must be active'; end if;
   if ledger_commission_cents <= 0 then raise exception 'payout item ledger commission must be positive'; end if;

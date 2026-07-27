@@ -218,6 +218,9 @@ test('payout lifecycle is finite, timestamped, and guarded by hardened security-
   assert.match(compact, /create function public\.prevent_payout_item_account_deactivation\(\) returns trigger language plpgsql security definer set search_path = pg_catalog/);
   assert.match(compact, /new\.state in \('reversed', 'void'\)/);
   assert.match(compact, /payout batch must contain at least one item before approval/);
+  assert.match(compact, /if tg_op in \('delete', 'update'\) then batch_id := old\.payout_batch_id; else batch_id := new\.payout_batch_id; end if; select status into batch_status from public\.payout_batches where id = batch_id for update; if not found or batch_status <> 'draft' then raise exception 'payout items may only be changed in a draft batch'; end if; if tg_op = 'delete' then return old; end if;/);
+  assert.doesNotMatch(compact, /old\.status = 'submitted' and new\.status = 'void'/, 'a batch with a durable provider transfer cannot be voided without cancellation evidence');
+  assert.match(compact, /old\.status = 'submitting' and new\.status = 'void'/, 'void remains available before a provider transfer is recorded');
   assert.match(compact, /selected commission ledger may only be paid by payout batch settlement/);
   assert.match(compact, /paid payout batch could not reconcile every selected ledger/);
   assert.match(compact, /new\.status <> 'active'/);

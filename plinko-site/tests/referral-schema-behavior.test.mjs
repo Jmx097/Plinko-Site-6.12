@@ -46,7 +46,7 @@ insert into public.referral_attributions (referral_link_id, referrer_user_id, re
 insert into public.subscription_entitlements (user_id, stripe_subscription_id, stripe_customer_id, status) values ('referred', 'sub_1', 'cus_1', 'active');
 insert into public.commission_ledger (referrer_user_id, referred_user_id, referral_attribution_id, subscription_entitlement_id, source_invoice_id, eligible_net_cents, currency, commission_rate_bps, term_month_number, state) values ('referrer', 'referred', 1, 1, 'in_1', 1001, 'usd', 3333, 1, 'available');
 insert into public.payout_accounts (user_id, stripe_connected_account_id, status) values ('referrer', 'acct_active', 'active');
-insert into public.payout_batches (currency) values ('usd'), ('usd'), ('usd');
+insert into public.payout_batches (currency) values ('usd'), ('usd'), ('usd'), ('usd'), ('usd');
 do $$ begin
   begin update public.payout_batches set status = 'approved', approved_at = now() where id = 2; raise exception 'empty approval succeeded'; exception when raise_exception then if position('at least one item' in sqlerrm) = 0 then raise; end if; end;
   insert into public.payout_batch_items (payout_batch_id, user_id, payout_account_id, commission_ledger_id, currency, commission_cents_snapshot) values (1, 'referrer', 1, 1, 'usd', 1);
@@ -58,6 +58,9 @@ do $$ begin
   update public.payout_batches set status = 'submitting', submission_idempotency_key = 'idem-1', submission_claimed_at = approved_at + interval '1 second' where id = 1;
   begin update public.payout_batches set status = 'submitted', external_transfer_id = 'transfer-1', submitted_at = submission_claimed_at - interval '1 second' where id = 1; raise exception 'invalid submit chronology succeeded'; exception when raise_exception then if position('requires an external transfer' in sqlerrm) = 0 then raise; end if; end;
   update public.payout_batches set status = 'submitted', external_transfer_id = 'transfer-1', submitted_at = submission_claimed_at + interval '1 second' where id = 1;
+  begin delete from public.payout_batch_items where payout_batch_id = 1; raise exception 'submitted payout item deletion succeeded'; exception when raise_exception then if position('only be changed in a draft batch' in sqlerrm) = 0 then raise; end if; end;
+  if (select count(*) from public.payout_batch_items where payout_batch_id = 1) <> 1 or (select state from public.commission_ledger where id = 1) <> 'available' then raise exception 'submitted deletion released selected ledger'; end if;
+  begin update public.payout_batches set status = 'void' where id = 1; raise exception 'submitted payout batch void succeeded'; exception when raise_exception then if position('invalid payout batch lifecycle transition' in sqlerrm) = 0 then raise; end if; end;
   begin update public.payout_batches set status = 'paid', paid_at = submitted_at - interval '1 second' where id = 1; raise exception 'invalid paid chronology succeeded'; exception when raise_exception then if position('requires paid_at' in sqlerrm) = 0 then raise; end if; end;
   insert into public.commission_ledger (referrer_user_id, referred_user_id, referral_attribution_id, subscription_entitlement_id, source_invoice_id, eligible_net_cents, currency, commission_rate_bps, term_month_number, state) values ('referrer', 'referred', 1, 1, 'in_2', 2000, 'usd', 1000, 2, 'available');
   insert into public.payout_batch_items (payout_batch_id, user_id, payout_account_id, commission_ledger_id, currency) values (3, 'referrer', 1, 2, 'usd');
@@ -67,7 +70,27 @@ do $$ begin
   begin update public.payout_batches set status = 'submitted', external_transfer_id = 'transfer-1', submitted_at = submission_claimed_at + interval '1 second' where id = 3; raise exception 'duplicate external transfer succeeded'; exception when unique_violation then null; end;
   update public.payout_batches set status = 'paid', paid_at = submitted_at + interval '1 second' where id = 1;
   if (select state from public.commission_ledger where id = 1) <> 'paid' then raise exception 'paid batch did not reconcile ledger'; end if;
+  begin delete from public.payout_batch_items where payout_batch_id = 1; raise exception 'paid payout item deletion succeeded'; exception when raise_exception then if position('only be changed in a draft batch' in sqlerrm) = 0 then raise; end if; end;
+  if (select count(*) from public.payout_batch_items where payout_batch_id = 1) <> 1 then raise exception 'paid deletion released selected ledger'; end if;
   begin update public.payout_batches set external_transfer_id = 'transfer-2' where id = 1; raise exception 'paid metadata mutation succeeded'; exception when raise_exception then if position('immutable' in sqlerrm) = 0 then raise; end if; end;
+
+  begin delete from public.payout_batch_items where payout_batch_id = 3; raise exception 'submitting payout item deletion succeeded'; exception when raise_exception then if position('only be changed in a draft batch' in sqlerrm) = 0 then raise; end if; end;
+  if (select count(*) from public.payout_batch_items where payout_batch_id = 3) <> 1 or (select state from public.commission_ledger where id = 2) <> 'available' then raise exception 'submitting deletion released selected ledger'; end if;
+  update public.payout_batches set status = 'void' where id = 3;
+  insert into public.commission_ledger (referrer_user_id, referred_user_id, referral_attribution_id, subscription_entitlement_id, source_invoice_id, eligible_net_cents, currency, commission_rate_bps, term_month_number, state) values
+    ('referrer', 'referred', 1, 1, 'in_3', 3000, 'usd', 1000, 3, 'available'),
+    ('referrer', 'referred', 1, 1, 'in_4', 4000, 'usd', 1000, 4, 'available');
+  insert into public.payout_batch_items (payout_batch_id, user_id, payout_account_id, commission_ledger_id, currency) values
+    (4, 'referrer', 1, 3, 'usd'), (5, 'referrer', 1, 4, 'usd');
+  update public.payout_batches set status = 'approved', approved_at = created_at + interval '1 second' where id in (4, 5);
+  begin delete from public.payout_batch_items where payout_batch_id = 4; raise exception 'approved payout item deletion succeeded'; exception when raise_exception then if position('only be changed in a draft batch' in sqlerrm) = 0 then raise; end if; end;
+  if (select count(*) from public.payout_batch_items where payout_batch_id = 4) <> 1 or (select state from public.commission_ledger where id = 3) <> 'available' then raise exception 'approved deletion released selected ledger'; end if;
+  update public.payout_batches set status = 'void' where id = 4;
+  if exists (select 1 from public.payout_batches where id = 4 and (submission_idempotency_key is not null or submission_claimed_at is not null or external_transfer_id is not null or submitted_at is not null or paid_at is not null)) then raise exception 'pre-submission void retained submission references'; end if;
+  update public.payout_batches set status = 'submitting', submission_idempotency_key = 'idem-5', submission_claimed_at = approved_at + interval '1 second' where id = 5;
+  update public.payout_batches set status = 'submitted', external_transfer_id = 'transfer-5', submitted_at = submission_claimed_at + interval '1 second' where id = 5;
+  begin delete from public.payout_batch_items where payout_batch_id = 5; raise exception 'submitted payout item deletion succeeded'; exception when raise_exception then if position('only be changed in a draft batch' in sqlerrm) = 0 then raise; end if; end;
+  if (select count(*) from public.payout_batch_items where payout_batch_id = 5) <> 1 or (select state from public.commission_ledger where id = 4) <> 'available' then raise exception 'submitted deletion released selected ledger'; end if;
 end $$;
 `);
     assert.ok(true);
