@@ -90,7 +90,7 @@ $$;
 
 insert into public.payout_accounts (user_id, stripe_connected_account_id, status)
 values ('referrer', 'acct_active', 'active'), ('referrer', 'acct_disabled', 'disabled');
-insert into public.payout_batches (currency) values ('usd'), ('usd');
+insert into public.payout_batches (currency) values ('usd'), ('usd'), ('usd');
 
 do $$
 begin
@@ -119,6 +119,9 @@ $$;
 
 insert into public.payout_batch_items (payout_batch_id, user_id, payout_account_id, commission_ledger_id, currency)
 values (1, 'referrer', 1, 1, 'usd');
+insert into public.commission_ledger
+  (referrer_user_id, referred_user_id, referral_attribution_id, subscription_entitlement_id, source_invoice_id, eligible_net_cents, currency, commission_rate_bps, term_month_number, state)
+values ('referrer', 'referred', 1, 1, 'in_2', 2000, 'usd', 1000, 2, 'available');
 do $$
 begin
   begin
@@ -127,6 +130,83 @@ begin
     raise exception 'duplicate ledger payout unexpectedly succeeded';
   exception when unique_violation then null;
   end;
+
+  begin
+    update public.payout_batches set status = 'submitted' where id = 2;
+    raise exception 'draft-to-submitted transition unexpectedly succeeded';
+  exception when raise_exception then
+    if position('invalid payout batch lifecycle transition' in sqlerrm) = 0 then raise; end if;
+  end;
+  begin
+    update public.payout_batches set status = 'approved' where id = 2;
+    raise exception 'approval without timestamp unexpectedly succeeded';
+  exception when raise_exception then
+    if position('requires approved_at' in sqlerrm) = 0 then raise; end if;
+  end;
+
+  update public.payout_batches set status = 'approved', approved_at = now() where id = 1;
+  begin
+    insert into public.payout_batch_items (payout_batch_id, user_id, payout_account_id, commission_ledger_id, currency)
+    values (1, 'referrer', 1, 2, 'usd');
+    raise exception 'approved batch item insert unexpectedly succeeded';
+  exception when raise_exception then
+    if position('only be changed in a draft batch' in sqlerrm) = 0 then raise; end if;
+  end;
+  insert into public.payout_batch_items (payout_batch_id, user_id, payout_account_id, commission_ledger_id, currency)
+  values (3, 'referrer', 1, 2, 'usd');
+  begin
+    update public.payout_batch_items set payout_batch_id = 1 where commission_ledger_id = 2;
+    raise exception 'move into approved batch unexpectedly succeeded';
+  exception when raise_exception then
+    if position('only be changed in a draft batch' in sqlerrm) = 0 then raise; end if;
+  end;
+  begin
+    update public.payout_batch_items set created_at = created_at where commission_ledger_id = 1;
+    raise exception 'approved batch item update unexpectedly succeeded';
+  exception when raise_exception then
+    if position('only be changed in a draft batch' in sqlerrm) = 0 then raise; end if;
+  end;
+  begin
+    delete from public.payout_batch_items where commission_ledger_id = 1;
+    raise exception 'approved batch item delete unexpectedly succeeded';
+  exception when raise_exception then
+    if position('only be changed in a draft batch' in sqlerrm) = 0 then raise; end if;
+  end;
+  begin
+    update public.commission_ledger set state = 'reversed' where id = 1;
+    raise exception 'reversal after payout item unexpectedly succeeded';
+  exception when raise_exception then
+    if position('cannot be reversed or voided' in sqlerrm) = 0 then raise; end if;
+  end;
+  begin
+    update public.commission_ledger set state = 'void' where id = 1;
+    raise exception 'void after payout item unexpectedly succeeded';
+  exception when raise_exception then
+    if position('cannot be reversed or voided' in sqlerrm) = 0 then raise; end if;
+  end;
+  begin
+    update public.payout_accounts set status = 'disabled' where id = 1;
+    raise exception 'account disable after payout item unexpectedly succeeded';
+  exception when raise_exception then
+    if position('must remain active' in sqlerrm) = 0 then raise; end if;
+  end;
+
+  update public.payout_batches set status = 'approved', approved_at = now() where id = 2;
+  update public.payout_batches set status = 'submitted' where id = 2;
+  update public.payout_batches set status = 'paid', paid_at = now() where id = 2;
+  if not exists (
+    select 1 from public.payout_batches
+    where id = 2 and status = 'paid' and approved_at is not null and paid_at is not null
+  ) then
+    raise exception 'valid payout lifecycle transition did not succeed';
+  end if;
+  begin
+    update public.payout_batches set status = 'void' where id = 2;
+    raise exception 'paid batch mutation unexpectedly succeeded';
+  exception when raise_exception then
+    if position('immutable' in sqlerrm) = 0 then raise; end if;
+  end;
+
   if exists (
     select 1 from pg_policies
     where schemaname = 'public'

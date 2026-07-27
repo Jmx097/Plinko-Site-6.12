@@ -103,19 +103,94 @@ create table public.payout_batch_items (
   constraint payout_batch_items_ledger_referrer_currency_fkey foreign key (commission_ledger_id, user_id, currency) references public.commission_ledger (id, referrer_user_id, currency)
 );
 
+-- Payout batches are an explicit state machine. Timestamps are written only by
+-- their corresponding transition, so a partial update cannot create a final-looking batch.
+create function public.validate_payout_batch_lifecycle()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog
+as $$
+begin
+  if tg_op = 'INSERT' then
+    if new.status <> 'draft' or new.approved_at is not null or new.paid_at is not null then
+      raise exception 'payout batch must be created as an untimestamped draft';
+    end if;
+    return new;
+  end if;
+
+  if old.status in ('paid', 'void') then
+    raise exception 'paid and void payout batches are immutable';
+  end if;
+
+  if new.status = old.status then
+    if new.approved_at is distinct from old.approved_at
+       or new.paid_at is distinct from old.paid_at then
+      raise exception 'payout batch timestamps may only be set by a lifecycle transition';
+    end if;
+    return new;
+  end if;
+
+  if old.status = 'draft' and new.status = 'approved' then
+    if new.approved_at is null or new.paid_at is not null then
+      raise exception 'approved payout batch requires approved_at and no paid_at';
+    end if;
+  elsif old.status = 'draft' and new.status = 'void' then
+    if new.approved_at is not null or new.paid_at is not null then
+      raise exception 'voided draft payout batch cannot have lifecycle timestamps';
+    end if;
+  elsif old.status = 'approved' and new.status in ('submitted', 'void') then
+    if new.approved_at is distinct from old.approved_at or new.paid_at is not null then
+      raise exception 'submitted or voided approved payout batch must retain approved_at and have no paid_at';
+    end if;
+  elsif old.status = 'submitted' and new.status = 'paid' then
+    if new.approved_at is distinct from old.approved_at or new.paid_at is null then
+      raise exception 'paid payout batch must retain approved_at and set paid_at';
+    end if;
+  elsif old.status = 'submitted' and new.status = 'void' then
+    if new.approved_at is distinct from old.approved_at or new.paid_at is not null then
+      raise exception 'voided submitted payout batch must retain approved_at and have no paid_at';
+    end if;
+  else
+    raise exception 'invalid payout batch lifecycle transition from % to %', old.status, new.status;
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function public.validate_payout_batch_lifecycle() from public;
+
+create trigger payout_batches_lifecycle_trigger
+before insert or update on public.payout_batches
+for each row execute function public.validate_payout_batch_lifecycle();
+
 -- This trigger only reads local relational state; it makes no external calls and stores no secrets.
 create function public.validate_payout_batch_item()
 returns trigger
 language plpgsql
 security definer
-set search_path = public
+set search_path = pg_catalog
 as $$
 declare
   ledger_state text;
   account_status text;
+  batch_status text;
 begin
-  select ledger.state, account.status
-    into ledger_state, account_status
+  if tg_op <> 'INSERT' then
+    select status into batch_status
+      from public.payout_batches
+     where id = old.payout_batch_id;
+    if not found or batch_status <> 'draft' then
+      raise exception 'payout items may only be changed in a draft batch';
+    end if;
+  end if;
+
+  if tg_op = 'DELETE' then
+    return old;
+  end if;
+
+  select ledger.state, account.status, batch.status
+    into ledger_state, account_status, batch_status
     from public.commission_ledger as ledger
     join public.payout_accounts as account
       on account.id = new.payout_account_id
@@ -130,6 +205,9 @@ begin
   if not found then
     raise exception 'payout item recipient, account, ledger, currency, or batch is inconsistent';
   end if;
+  if batch_status <> 'draft' then
+    raise exception 'payout items may only be changed in a draft batch';
+  end if;
   if ledger_state <> 'available' then
     raise exception 'payout item ledger must be available';
   end if;
@@ -143,8 +221,52 @@ $$;
 revoke all on function public.validate_payout_batch_item() from public;
 
 create trigger payout_batch_items_integrity_trigger
-before insert or update on public.payout_batch_items
+before insert or update or delete on public.payout_batch_items
 for each row execute function public.validate_payout_batch_item();
+
+create function public.prevent_payout_item_ledger_reversal()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog
+as $$
+begin
+  if new.state is distinct from old.state
+     and new.state in ('reversed', 'void')
+     and exists (select 1 from public.payout_batch_items where commission_ledger_id = old.id) then
+    raise exception 'commission ledger with payout item cannot be reversed or voided';
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function public.prevent_payout_item_ledger_reversal() from public;
+
+create trigger commission_ledger_payout_item_state_trigger
+before update of state on public.commission_ledger
+for each row execute function public.prevent_payout_item_ledger_reversal();
+
+create function public.prevent_payout_item_account_deactivation()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog
+as $$
+begin
+  if new.status is distinct from old.status
+     and new.status <> 'active'
+     and exists (select 1 from public.payout_batch_items where payout_account_id = old.id) then
+    raise exception 'payout account with payout item must remain active';
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function public.prevent_payout_item_account_deactivation() from public;
+
+create trigger payout_accounts_payout_item_status_trigger
+before update of status on public.payout_accounts
+for each row execute function public.prevent_payout_item_account_deactivation();
 
 create table public.stripe_webhook_events (
   id bigint generated always as identity primary key,
