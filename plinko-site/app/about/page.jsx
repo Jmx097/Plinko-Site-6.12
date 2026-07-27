@@ -196,7 +196,7 @@ export default function AboutPage() {
             More than services. <em>A command layer for modern business</em><span className="red-dot" />
           </h2>
           <p className="manifesto-sub">
-            A Hermes-powered business command center: voice interfaces, agent orchestration, KPI visibility, and
+            A Plinko Pocket-powered business command center: voice interfaces, agent orchestration, KPI visibility, and
             decision support in one controlled environment. Not more software dependence — a clearer operating
             system for how lean teams run with AI.
           </p>
@@ -220,7 +220,7 @@ export default function AboutPage() {
       <footer>
         <div className="wrap">
           <div className="foot-base" style={{ borderTop: 'none', paddingTop: 0 }}>
-            <span>© 2026 Plinko Solutions · Built with OpenClaw and Hermes</span>
+            <span>© 2026 Plinko Solutions · Built with OpenClaw and Plinko Pocket</span>
             <span className="foot-legend">
               <span><a href="https://www.linkedin.com/in/jonathan-mclemore-997712175/" style={{ color: 'inherit' }}>LinkedIn</a></span>
               <span><a href={CAL} style={{ color: 'inherit' }}>Book a Session</a></span>

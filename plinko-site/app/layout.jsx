@@ -7,7 +7,7 @@ export const metadata = {
   description:
     'Only ~0.04% of the world runs a real AI agent harness. Plinko builds private AI operating systems for growing businesses — one-time setup, no subscriptions, you own it.',
   keywords:
-    'Claude Cowork setup, OpenClaw harness, Hermes AI agent, AI harness for business, private AI coworker, done for you AI setup, AI agent business automation, mid market AI',
+    'Claude Cowork setup, OpenClaw harness, Plinko Pocket AI agent, AI harness for business, private AI coworker, done for you AI setup, AI agent business automation, mid market AI',
   openGraph: {
     title: 'Plinko Solutions | Be the Red Dot',
     description:

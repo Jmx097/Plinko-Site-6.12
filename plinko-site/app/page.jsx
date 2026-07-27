@@ -34,7 +34,7 @@ const STEPS = [
   {
     n: 2,
     title: 'Build & Configure',
-    body: 'We architect and deploy your private system using Claude Cowork, OpenClaw, and Hermes: integrations, specialized agent roles, approval gates, and the safety controls needed to move from demo behavior to real operational work.',
+    body: 'We architect and deploy your private system using Claude Cowork, OpenClaw, and Plinko Pocket: integrations, specialized agent roles, approval gates, and the safety controls needed to move from demo behavior to real operational work.',
   },
   {
     n: 3,
@@ -95,16 +95,16 @@ const TESTIMONIALS = [
 
 const FAQS = [
   ['What does “be the red dot” actually mean?', 'Of roughly 8.1 billion people, only ~0.04% — a few million — run AI as an operating system rather than a chat window. The red dot is shorthand for that tier: agents that research, draft, follow up, and report inside your own tools. Plinko builds you into it without you needing a dev team.'],
-  ['What is an AI harness and why do I need one?', 'An AI harness is a configured system of AI agents, tools, and workflows that automates repetitive business work. You need one when your team spends too much time on research, drafting, follow-ups, data entry, and reporting instead of closing deals and serving clients. A harness connects Claude, OpenClaw, and Hermes to your existing tools and runs them with approval gates for sensitive actions.'],
-  ['What is Claude Cowork for business?', 'Claude Cowork means configuring Anthropic’s Claude AI as an active coworker inside your tools — handling research, drafting, follow-ups, and operations through OpenClaw and Hermes, with human approval on sensitive actions.'],
+  ['What is an AI harness and why do I need one?', 'An AI harness is a configured system of AI agents, tools, and workflows that automates repetitive business work. You need one when your team spends too much time on research, drafting, follow-ups, data entry, and reporting instead of closing deals and serving clients. A harness connects Claude, OpenClaw, and Plinko Pocket to your existing tools and runs them with approval gates for sensitive actions.'],
+  ['What is Claude Cowork for business?', 'Claude Cowork means configuring Anthropic’s Claude AI as an active coworker inside your tools — handling research, drafting, follow-ups, and operations through OpenClaw and Plinko Pocket, with human approval on sensitive actions.'],
   ['How is this different from WorkClaw?', 'WorkClaw charges monthly fees plus AI credits — you rent access. Plinko builds a harness you own outright: one-time cost, no recurring platform fees, no credit gates. You control the infrastructure and the data.'],
   ['What tools can the harness connect to?', 'Slack, Gmail, Google Workspace, Notion, Airtable, HubSpot, Salesforce, Calendly, and most tools with an API. We can also build custom integrations for proprietary or industry-specific tools.'],
   ['How long does it take to set up?', 'The Starter Harness is delivered in 14 days. The Business Harness typically takes 21–30 days depending on complexity. Both include a Strategy Session, build and configuration, and handoff with team training.'],
-  ['Is my data safe?', 'Yes. The harness runs on infrastructure you control — typically a private VPS or your existing cloud account. We do not host your data. OpenClaw and Hermes run locally or on your servers, and all workflows include approval gates for sensitive actions.'],
+  ['Is my data safe?', 'Yes. The harness runs on infrastructure you control — typically a private VPS or your existing cloud account. We do not host your data. OpenClaw and Plinko Pocket run locally or on your servers, and all workflows include approval gates for sensitive actions.'],
   ['Do I need technical skills?', 'No. The harness is built for business users, not developers. We handle all technical setup, integration, and configuration. After handoff, your team interacts with the harness through familiar tools like Slack and email, with documentation and training included.'],
 ];
 
-const TOOLS = ['Claude Cowork', 'OpenClaw', 'Hermes', 'Slack', 'Gmail', 'Google Workspace', 'Notion', 'Airtable', 'HubSpot', 'Salesforce', 'Calendly', 'Custom APIs'];
+const TOOLS = ['Claude Cowork', 'OpenClaw', 'Plinko Pocket', 'Slack', 'Gmail', 'Google Workspace', 'Notion', 'Airtable', 'HubSpot', 'Salesforce', 'Calendly', 'Custom APIs'];
 
 function Sw({ c }) {
   return <span className="sw" style={{ background: c }} />;
@@ -299,7 +299,7 @@ export default function Page() {
           <div className="grid-4" style={{ marginTop: 48 }}>
             <div className="card"><Sw c="#57b176" /><h3>One-time cost</h3><p>Pay for the build once. No recurring platform subscription draining your budget.</p></div>
             <div className="card"><Sw c="#57b176" /><h3>No credit gates</h3><p>Use your own API keys. No artificial usage limits or surprise overage bills.</p></div>
-            <div className="card"><Sw c="#57b176" /><h3>You own the code</h3><p>OpenClaw and Hermes are open-source. You control every integration and every workflow.</p></div>
+            <div className="card"><Sw c="#57b176" /><h3>You own the code</h3><p>You retain control of your code, integrations, and workflows.</p></div>
             <div className="card"><Sw c="#57b176" /><h3>Custom for your stack</h3><p>Not a generic template. Built around the tools your team actually uses.</p></div>
           </div>
 
@@ -380,7 +380,7 @@ export default function Page() {
               <div className="foot-role">Founder, Plinko Solutions</div>
               <p>
                 Customer Success Manager in enterprise content management. I build practical AI harnesses for lean
-                teams using OpenClaw, Hermes, and Claude. No jargon. Just systems that work.
+                teams using OpenClaw, Plinko Pocket, and Claude. No jargon. Just systems that work.
               </p>
             </div>
             <div className="foot-links">
@@ -390,7 +390,7 @@ export default function Page() {
             </div>
           </div>
           <div className="foot-base">
-            <span>© 2026 Plinko Solutions · Built with OpenClaw and Hermes</span>
+            <span>© 2026 Plinko Solutions · Built with OpenClaw and Plinko Pocket</span>
             <span className="foot-legend">
               <span><span className="sw" style={{ background: '#d9d5cc' }} />never used AI</span>
               <span><span className="sw" style={{ background: '#57b176' }} />chatbot</span>
