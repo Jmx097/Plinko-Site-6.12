@@ -1,3 +1,5 @@
+import 'server-only';
+
 /**
  * Server-only environment contract for Plinko Solutions Core.
  * This module is intentionally not imported by browser-facing code.
