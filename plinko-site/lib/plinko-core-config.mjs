@@ -28,5 +28,21 @@ function requiredValue(value) {
 
 function normalizeUrl(value) {
   const normalizedValue = requiredValue(value);
-  return normalizedValue?.replace(/\/+$/, '') || undefined;
+
+  if (!normalizedValue) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(normalizedValue);
+
+    if (url.protocol !== 'https:' || !url.hostname || url.username || url.password) {
+      return undefined;
+    }
+
+    const pathname = url.pathname.replace(/\/+$/, '');
+    return `${url.origin}${pathname}${url.search}${url.hash}`;
+  } catch {
+    return undefined;
+  }
 }

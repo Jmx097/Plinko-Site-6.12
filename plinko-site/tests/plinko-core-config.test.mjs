@@ -30,12 +30,36 @@ test('throws when Plinko Solutions Core configuration is missing', async () => {
 test('returns normalized Plinko Solutions Core configuration', async () => {
   const { getPlinkoCoreConfig } = await loadConfigModule();
 
-  assert.deepEqual(getPlinkoCoreConfig(completeEnvironment), {
+  assert.deepEqual(getPlinkoCoreConfig({
+    ...completeEnvironment,
+    PLINKO_CORE_URL: 'https://plinko-core.example.supabase.co///',
+    PLINKO_APP_URL: 'https://app.plinkosolutions.com///',
+  }), {
     url: 'https://plinko-core.example.supabase.co',
     serviceRoleKey: 'service-role-example',
     publishableKey: 'publishable-example',
     appUrl: 'https://app.plinkosolutions.com',
   });
+});
+
+test('throws when a Plinko Solutions Core URL is invalid', async () => {
+  const { getPlinkoCoreConfig } = await loadConfigModule();
+  const invalidUrls = [
+    '   ',
+    'javascript:alert(1)',
+    'http://example.com',
+    'not a url',
+  ];
+
+  for (const key of ['PLINKO_CORE_URL', 'PLINKO_APP_URL']) {
+    for (const value of invalidUrls) {
+      assert.throws(
+        () => getPlinkoCoreConfig({ ...completeEnvironment, [key]: value }),
+        /Missing Plinko Solutions Core configuration/,
+        `${key} should reject ${JSON.stringify(value)}`,
+      );
+    }
+  }
 });
 
 test('throws when any required configuration value is missing', async () => {
