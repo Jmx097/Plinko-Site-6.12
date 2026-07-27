@@ -180,15 +180,53 @@ test('cross-row referral, commission, and payout ownership is bound by composite
   }
 });
 
-test('member-facing policies are read-only and scoped to the JWT subject', () => {
+test('commission and payout amounts are derived rather than independently supplied', () => {
+  const ledger = tableBody('commission_ledger');
+  assert.match(
+    ledger,
+    /commission_cents integer generated always as \(\(eligible_net_cents::bigint \* commission_rate_bps::bigint \/ 10000\)::integer\) stored/,
+    'commission cents must floor nonnegative integer cents from net amount and basis points',
+  );
+  assert.doesNotMatch(ledger, /commission_cents integer not null/);
+  assert.match(ledger, /eligible_net_cents integer not null check \(eligible_net_cents between 0 and 2147483647\)/);
+
+  const batches = tableBody('payout_batches');
+  const items = tableBody('payout_batch_items');
+  assert.doesNotMatch(batches, /\btotal_cents\b/, 'batch totals must be aggregated, not persisted');
+  assert.doesNotMatch(items, /\bamount_cents\b/, 'item amount must come from the linked ledger');
+  assert.match(items, /commission_ledger_id bigint unique not null/);
+});
+
+test('payout items are guarded by a narrow security-definer integrity trigger', () => {
+  const accounts = tableBody('payout_accounts');
+  assert.match(accounts, /status text not null check \(status in \('pending', 'active', 'disabled'\)\)/);
+  assert.match(compact, /create function public\.validate_payout_batch_item\(\) returns trigger language plpgsql security definer set search_path = public/);
+  assert.match(compact, /create trigger payout_batch_items_integrity_trigger before insert or update on public\.payout_batch_items/);
+  assert.match(compact, /ledger_state <> 'available'/);
+  assert.match(compact, /account_status <> 'active'/);
+  assert.match(compact, /revoke all on function public\.validate_payout_batch_item\(\) from public/);
+  assert.doesNotMatch(compact, /http|pg_net|dblink/, 'integrity trigger must not make external calls');
+});
+
+test('only safe profile and referral-link reads are member-readable', () => {
   for (const [table, policy] of [
     ['member_profiles', 'member_select_own_profile'],
     ['referral_links', 'member_select_own_referral_links'],
-    ['referral_attributions', 'member_select_own_referral_attributions'],
-    ['commission_ledger', 'member_select_own_commissions'],
-    ['payout_accounts', 'member_select_own_payout_accounts'],
-    ['payout_batch_items', 'member_select_own_payout_batch_items'],
   ]) {
     assert.match(compact, policyFor(table, policy));
   }
+  for (const table of [
+    'referral_attributions',
+    'commission_ledger',
+    'payout_accounts',
+    'payout_batches',
+    'payout_batch_items',
+  ]) {
+    assert.doesNotMatch(
+      compact,
+      new RegExp(`create policy [^;]* on public\\.${table} for select`, 's'),
+      `${table} contains raw referral or financial identifiers and must remain server-only`,
+    );
+  }
+  assert.doesNotMatch(compact, /member_select_own_(referral_attributions|commissions|payout_accounts|payout_batch_items)/);
 });

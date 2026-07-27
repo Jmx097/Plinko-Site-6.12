@@ -39,7 +39,6 @@ create table public.subscription_entitlements (
   current_period_start timestamptz,
   current_period_end timestamptz,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
   constraint subscription_entitlements_id_user_id_key unique (id, user_id),
   constraint subscription_entitlements_user_id_fkey foreign key (user_id) references public.member_profiles (user_id)
 );
@@ -51,8 +50,10 @@ create table public.commission_ledger (
   referral_attribution_id bigint not null,
   subscription_entitlement_id bigint not null,
   source_invoice_id text unique not null,
-  eligible_net_cents integer not null check (eligible_net_cents >= 0),
-  commission_cents integer not null check (commission_cents >= 0),
+  -- Nonnegative integer division deliberately floors fractional cents toward zero.
+  -- bigint intermediates keep the calculation safe for the full integer input range.
+  eligible_net_cents integer not null check (eligible_net_cents between 0 and 2147483647),
+  commission_cents integer generated always as ((eligible_net_cents::bigint * commission_rate_bps::bigint / 10000)::integer) stored,
   currency text not null check (currency ~ '^[a-z]{3}$'),
   commission_rate_bps integer not null check (commission_rate_bps between 0 and 10000),
   term_month_number integer not null check (term_month_number between 1 and 12),
@@ -72,9 +73,8 @@ create table public.payout_accounts (
   id bigint generated always as identity primary key,
   user_id text not null,
   stripe_connected_account_id text unique not null,
-  status text not null,
+  status text not null check (status in ('pending', 'active', 'disabled')),
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
   constraint payout_accounts_id_user_id_key unique (id, user_id),
   constraint payout_accounts_user_id_fkey foreign key (user_id) references public.member_profiles (user_id)
 );
@@ -83,7 +83,6 @@ create table public.payout_batches (
   id bigint generated always as identity primary key,
   status text not null default 'draft' check (status in ('draft', 'approved', 'submitted', 'paid', 'void')),
   currency text not null check (currency ~ '^[a-z]{3}$'),
-  total_cents integer not null default 0 check (total_cents >= 0),
   approved_at timestamptz,
   paid_at timestamptz,
   created_at timestamptz not null default now(),
@@ -96,7 +95,6 @@ create table public.payout_batch_items (
   user_id text not null,
   payout_account_id bigint not null,
   commission_ledger_id bigint unique not null,
-  amount_cents integer not null check (amount_cents > 0),
   currency text not null check (currency ~ '^[a-z]{3}$'),
   created_at timestamptz not null default now(),
   constraint payout_batch_items_user_id_fkey foreign key (user_id) references public.member_profiles (user_id),
@@ -104,6 +102,49 @@ create table public.payout_batch_items (
   constraint payout_batch_items_account_owner_fkey foreign key (payout_account_id, user_id) references public.payout_accounts (id, user_id),
   constraint payout_batch_items_ledger_referrer_currency_fkey foreign key (commission_ledger_id, user_id, currency) references public.commission_ledger (id, referrer_user_id, currency)
 );
+
+-- This trigger only reads local relational state; it makes no external calls and stores no secrets.
+create function public.validate_payout_batch_item()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  ledger_state text;
+  account_status text;
+begin
+  select ledger.state, account.status
+    into ledger_state, account_status
+    from public.commission_ledger as ledger
+    join public.payout_accounts as account
+      on account.id = new.payout_account_id
+     and account.user_id = new.user_id
+    join public.payout_batches as batch
+      on batch.id = new.payout_batch_id
+     and batch.currency = new.currency
+   where ledger.id = new.commission_ledger_id
+     and ledger.referrer_user_id = new.user_id
+     and ledger.currency = new.currency;
+
+  if not found then
+    raise exception 'payout item recipient, account, ledger, currency, or batch is inconsistent';
+  end if;
+  if ledger_state <> 'available' then
+    raise exception 'payout item ledger must be available';
+  end if;
+  if account_status <> 'active' then
+    raise exception 'payout item account must be active';
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function public.validate_payout_batch_item() from public;
+
+create trigger payout_batch_items_integrity_trigger
+before insert or update on public.payout_batch_items
+for each row execute function public.validate_payout_batch_item();
 
 create table public.stripe_webhook_events (
   id bigint generated always as identity primary key,
@@ -155,19 +196,3 @@ create policy member_select_own_profile
 create policy member_select_own_referral_links
   on public.referral_links for select
   using (owner_user_id = auth.jwt() ->> 'sub');
-
-create policy member_select_own_referral_attributions
-  on public.referral_attributions for select
-  using (referrer_user_id = auth.jwt() ->> 'sub');
-
-create policy member_select_own_commissions
-  on public.commission_ledger for select
-  using (referrer_user_id = auth.jwt() ->> 'sub');
-
-create policy member_select_own_payout_accounts
-  on public.payout_accounts for select
-  using (user_id = auth.jwt() ->> 'sub');
-
-create policy member_select_own_payout_batch_items
-  on public.payout_batch_items for select
-  using (user_id = auth.jwt() ->> 'sub');
