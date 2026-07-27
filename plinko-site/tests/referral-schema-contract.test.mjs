@@ -180,7 +180,7 @@ test('cross-row referral, commission, and payout ownership is bound by composite
   }
 });
 
-test('commission and payout amounts are derived rather than independently supplied', () => {
+test('commission and payout amounts are derived and selected payouts retain an immutable server snapshot', () => {
   const ledger = tableBody('commission_ledger');
   assert.match(
     ledger,
@@ -194,28 +194,40 @@ test('commission and payout amounts are derived rather than independently suppli
   const items = tableBody('payout_batch_items');
   assert.doesNotMatch(batches, /\btotal_cents\b/, 'batch totals must be aggregated, not persisted');
   assert.doesNotMatch(items, /\bamount_cents\b/, 'item amount must come from the linked ledger');
+  assert.match(items, /commission_cents_snapshot integer not null check \(commission_cents_snapshot > 0\)/);
   assert.match(items, /commission_ledger_id bigint unique not null/);
+  assert.match(compact, /new\.commission_cents_snapshot := ledger_commission_cents/);
+  assert.match(compact, /payout item ownership and commission snapshot are immutable/);
+  assert.match(compact, /financial basis and attribution are immutable after payout selection/);
 });
 
 test('payout lifecycle is finite, timestamped, and guarded by hardened security-definer triggers', () => {
   const accounts = tableBody('payout_accounts');
   const batches = tableBody('payout_batches');
   assert.match(accounts, /status text not null check \(status in \('pending', 'active', 'disabled'\)\)/);
-  assert.match(batches, /status text not null default 'draft' check \(status in \('draft', 'approved', 'submitted', 'paid', 'void'\)\)/);
+  assert.match(batches, /status text not null default 'draft' check \(status in \('draft', 'approved', 'submitting', 'submitted', 'paid', 'void'\)\)/);
+  for (const column of ['submission_idempotency_key text unique', 'submission_claimed_at timestamptz', 'external_transfer_id text unique', 'submitted_at timestamptz']) {
+    assert.match(batches, new RegExp(column));
+  }
   assert.match(compact, /create function public\.validate_payout_batch_lifecycle\(\) returns trigger language plpgsql security definer set search_path = pg_catalog/);
   assert.match(compact, /create trigger payout_batches_lifecycle_trigger before insert or update on public\.payout_batches/);
   assert.match(compact, /create function public\.validate_payout_batch_item\(\) returns trigger language plpgsql security definer set search_path = pg_catalog/);
   assert.match(compact, /create trigger payout_batch_items_integrity_trigger before insert or update or delete on public\.payout_batch_items/);
-  assert.match(compact, /create function public\.prevent_payout_item_ledger_reversal\(\) returns trigger language plpgsql security definer set search_path = pg_catalog/);
+  assert.match(compact, /create function public\.prevent_payout_item_ledger_mutation\(\) returns trigger language plpgsql security definer set search_path = pg_catalog/);
+  assert.match(compact, /create function public\.reconcile_paid_payout_batch\(\) returns trigger language plpgsql security definer set search_path = pg_catalog/);
   assert.match(compact, /create function public\.prevent_payout_item_account_deactivation\(\) returns trigger language plpgsql security definer set search_path = pg_catalog/);
   assert.match(compact, /new\.state in \('reversed', 'void'\)/);
+  assert.match(compact, /payout batch must contain at least one item before approval/);
+  assert.match(compact, /selected commission ledger may only be paid by payout batch settlement/);
+  assert.match(compact, /paid payout batch could not reconcile every selected ledger/);
   assert.match(compact, /new\.status <> 'active'/);
   assert.match(compact, /ledger_state <> 'available'/);
   assert.match(compact, /account_status <> 'active'/);
   for (const fn of [
     'validate_payout_batch_lifecycle',
     'validate_payout_batch_item',
-    'prevent_payout_item_ledger_reversal',
+    'prevent_payout_item_ledger_mutation',
+    'reconcile_paid_payout_batch',
     'prevent_payout_item_account_deactivation',
   ]) {
     assert.match(compact, new RegExp(`revoke all on function public\\.${fn}\\(\\) from public`));

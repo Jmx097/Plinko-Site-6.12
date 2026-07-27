@@ -81,9 +81,13 @@ create table public.payout_accounts (
 
 create table public.payout_batches (
   id bigint generated always as identity primary key,
-  status text not null default 'draft' check (status in ('draft', 'approved', 'submitted', 'paid', 'void')),
+  status text not null default 'draft' check (status in ('draft', 'approved', 'submitting', 'submitted', 'paid', 'void')),
   currency text not null check (currency ~ '^[a-z]{3}$'),
   approved_at timestamptz,
+  submission_idempotency_key text unique,
+  submission_claimed_at timestamptz,
+  external_transfer_id text unique,
+  submitted_at timestamptz,
   paid_at timestamptz,
   created_at timestamptz not null default now(),
   constraint payout_batches_id_currency_key unique (id, currency)
@@ -95,6 +99,7 @@ create table public.payout_batch_items (
   user_id text not null,
   payout_account_id bigint not null,
   commission_ledger_id bigint unique not null,
+  commission_cents_snapshot integer not null check (commission_cents_snapshot > 0),
   currency text not null check (currency ~ '^[a-z]{3}$'),
   created_at timestamptz not null default now(),
   constraint payout_batch_items_user_id_fkey foreign key (user_id) references public.member_profiles (user_id),
@@ -103,8 +108,7 @@ create table public.payout_batch_items (
   constraint payout_batch_items_ledger_referrer_currency_fkey foreign key (commission_ledger_id, user_id, currency) references public.commission_ledger (id, referrer_user_id, currency)
 );
 
--- Payout batches are an explicit state machine. Timestamps are written only by
--- their corresponding transition, so a partial update cannot create a final-looking batch.
+-- Payout lifecycle state is server-validated; provider references are identifiers only.
 create function public.validate_payout_batch_lifecycle()
 returns trigger
 language plpgsql
@@ -113,160 +117,153 @@ set search_path = pg_catalog
 as $$
 begin
   if tg_op = 'INSERT' then
-    if new.status <> 'draft' or new.approved_at is not null or new.paid_at is not null then
+    if new.status <> 'draft' or new.approved_at is not null
+       or new.submission_idempotency_key is not null or new.submission_claimed_at is not null
+       or new.external_transfer_id is not null or new.submitted_at is not null or new.paid_at is not null then
       raise exception 'payout batch must be created as an untimestamped draft';
     end if;
     return new;
   end if;
-
-  if old.status in ('paid', 'void') then
-    raise exception 'paid and void payout batches are immutable';
-  end if;
-
+  if old.status in ('paid', 'void') then raise exception 'paid and void payout batches are immutable'; end if;
   if new.status = old.status then
-    if new.approved_at is distinct from old.approved_at
-       or new.paid_at is distinct from old.paid_at then
-      raise exception 'payout batch timestamps may only be set by a lifecycle transition';
+    if old.status <> 'draft' then raise exception 'non-draft payout batches may only change by a lifecycle transition'; end if;
+    if new.approved_at is not null or new.submission_idempotency_key is not null or new.submission_claimed_at is not null
+       or new.external_transfer_id is not null or new.submitted_at is not null or new.paid_at is not null then
+      raise exception 'draft payout batch cannot set lifecycle metadata';
     end if;
     return new;
   end if;
-
   if old.status = 'draft' and new.status = 'approved' then
-    if new.approved_at is null or new.paid_at is not null then
-      raise exception 'approved payout batch requires approved_at and no paid_at';
+    if not exists (select 1 from public.payout_batch_items where payout_batch_id = old.id) then
+      raise exception 'payout batch must contain at least one item before approval';
+    end if;
+    if new.approved_at is null or new.approved_at < old.created_at or new.submission_idempotency_key is not null
+       or new.submission_claimed_at is not null or new.external_transfer_id is not null or new.submitted_at is not null or new.paid_at is not null then
+      raise exception 'approved payout batch requires approved_at and no submission metadata';
     end if;
   elsif old.status = 'draft' and new.status = 'void' then
-    if new.approved_at is not null or new.paid_at is not null then
+    if new.approved_at is not null or new.submission_idempotency_key is not null or new.submission_claimed_at is not null
+       or new.external_transfer_id is not null or new.submitted_at is not null or new.paid_at is not null then
       raise exception 'voided draft payout batch cannot have lifecycle timestamps';
     end if;
-  elsif old.status = 'approved' and new.status in ('submitted', 'void') then
-    if new.approved_at is distinct from old.approved_at or new.paid_at is not null then
-      raise exception 'submitted or voided approved payout batch must retain approved_at and have no paid_at';
+  elsif old.status = 'approved' and new.status = 'submitting' then
+    if new.currency is distinct from old.currency or new.created_at is distinct from old.created_at or new.approved_at is distinct from old.approved_at
+       or new.submission_idempotency_key is null or new.submission_idempotency_key = '' or new.submission_claimed_at is null
+       or new.submission_claimed_at < old.approved_at or new.external_transfer_id is not null or new.submitted_at is not null or new.paid_at is not null then
+      raise exception 'submitting payout batch requires a claimed idempotency key after approval';
+    end if;
+  elsif old.status = 'approved' and new.status = 'void' then
+    if new.currency is distinct from old.currency or new.created_at is distinct from old.created_at or new.approved_at is distinct from old.approved_at
+       or new.submission_idempotency_key is not null or new.submission_claimed_at is not null or new.external_transfer_id is not null or new.submitted_at is not null or new.paid_at is not null then
+      raise exception 'voided approved payout batch must retain approval metadata only';
+    end if;
+  elsif old.status = 'submitting' and new.status = 'submitted' then
+    if new.currency is distinct from old.currency or new.created_at is distinct from old.created_at or new.approved_at is distinct from old.approved_at
+       or new.submission_idempotency_key is distinct from old.submission_idempotency_key or new.submission_claimed_at is distinct from old.submission_claimed_at
+       or new.external_transfer_id is null or new.external_transfer_id = '' or new.submitted_at is null or new.submitted_at < old.submission_claimed_at or new.paid_at is not null then
+      raise exception 'submitted payout batch requires an external transfer after submission claim';
+    end if;
+  elsif old.status = 'submitting' and new.status = 'void' then
+    if new.currency is distinct from old.currency or new.created_at is distinct from old.created_at or new.approved_at is distinct from old.approved_at
+       or new.submission_idempotency_key is distinct from old.submission_idempotency_key or new.submission_claimed_at is distinct from old.submission_claimed_at
+       or new.external_transfer_id is not null or new.submitted_at is not null or new.paid_at is not null then
+      raise exception 'voided submitting payout batch must retain claim metadata only';
     end if;
   elsif old.status = 'submitted' and new.status = 'paid' then
-    if new.approved_at is distinct from old.approved_at or new.paid_at is null then
-      raise exception 'paid payout batch must retain approved_at and set paid_at';
-    end if;
+    if new.currency is distinct from old.currency or new.created_at is distinct from old.created_at or new.approved_at is distinct from old.approved_at
+       or new.submission_idempotency_key is distinct from old.submission_idempotency_key or new.submission_claimed_at is distinct from old.submission_claimed_at
+       or new.external_transfer_id is distinct from old.external_transfer_id or new.submitted_at is distinct from old.submitted_at
+       or new.paid_at is null or new.paid_at < old.submitted_at then raise exception 'paid payout batch requires paid_at after submitted_at'; end if;
   elsif old.status = 'submitted' and new.status = 'void' then
-    if new.approved_at is distinct from old.approved_at or new.paid_at is not null then
-      raise exception 'voided submitted payout batch must retain approved_at and have no paid_at';
+    if new.currency is distinct from old.currency or new.created_at is distinct from old.created_at or new.approved_at is distinct from old.approved_at
+       or new.submission_idempotency_key is distinct from old.submission_idempotency_key or new.submission_claimed_at is distinct from old.submission_claimed_at
+       or new.external_transfer_id is distinct from old.external_transfer_id or new.submitted_at is distinct from old.submitted_at or new.paid_at is not null then
+      raise exception 'voided submitted payout batch must retain submission metadata';
     end if;
-  else
-    raise exception 'invalid payout batch lifecycle transition from % to %', old.status, new.status;
+  else raise exception 'invalid payout batch lifecycle transition from % to %', old.status, new.status;
   end if;
   return new;
 end;
 $$;
-
 revoke all on function public.validate_payout_batch_lifecycle() from public;
+create trigger payout_batches_lifecycle_trigger before insert or update on public.payout_batches for each row execute function public.validate_payout_batch_lifecycle();
 
-create trigger payout_batches_lifecycle_trigger
-before insert or update on public.payout_batches
-for each row execute function public.validate_payout_batch_lifecycle();
-
--- This trigger only reads local relational state; it makes no external calls and stores no secrets.
 create function public.validate_payout_batch_item()
-returns trigger
-language plpgsql
-security definer
-set search_path = pg_catalog
-as $$
-declare
-  ledger_state text;
-  account_status text;
-  batch_status text;
+returns trigger language plpgsql security definer set search_path = pg_catalog as $$
+declare ledger_state text; ledger_commission_cents integer; account_status text; batch_status text;
 begin
-  if tg_op <> 'INSERT' then
-    select status into batch_status
-      from public.payout_batches
-     where id = old.payout_batch_id;
-    if not found or batch_status <> 'draft' then
-      raise exception 'payout items may only be changed in a draft batch';
+  if tg_op = 'UPDATE' then
+    select status into batch_status from public.payout_batches where id = old.payout_batch_id;
+    if not found or batch_status <> 'draft' then raise exception 'payout items may only be changed in a draft batch'; end if;
+    if new.commission_cents_snapshot is distinct from old.commission_cents_snapshot or new.commission_ledger_id is distinct from old.commission_ledger_id
+       or new.payout_batch_id is distinct from old.payout_batch_id or new.user_id is distinct from old.user_id
+       or new.payout_account_id is distinct from old.payout_account_id or new.currency is distinct from old.currency then
+      raise exception 'payout item ownership and commission snapshot are immutable';
     end if;
   end if;
-
-  if tg_op = 'DELETE' then
-    return old;
-  end if;
-
-  select ledger.state, account.status, batch.status
-    into ledger_state, account_status, batch_status
-    from public.commission_ledger as ledger
-    join public.payout_accounts as account
-      on account.id = new.payout_account_id
-     and account.user_id = new.user_id
-    join public.payout_batches as batch
-      on batch.id = new.payout_batch_id
-     and batch.currency = new.currency
-   where ledger.id = new.commission_ledger_id
-     and ledger.referrer_user_id = new.user_id
-     and ledger.currency = new.currency;
-
-  if not found then
-    raise exception 'payout item recipient, account, ledger, currency, or batch is inconsistent';
-  end if;
-  if batch_status <> 'draft' then
-    raise exception 'payout items may only be changed in a draft batch';
-  end if;
-  if ledger_state <> 'available' then
-    raise exception 'payout item ledger must be available';
-  end if;
-  if account_status <> 'active' then
-    raise exception 'payout item account must be active';
-  end if;
+  if tg_op = 'DELETE' then return old; end if;
+  select ledger.state, ledger.commission_cents, account.status, batch.status into ledger_state, ledger_commission_cents, account_status, batch_status
+    from public.commission_ledger ledger join public.payout_accounts account on account.id = new.payout_account_id and account.user_id = new.user_id
+    join public.payout_batches batch on batch.id = new.payout_batch_id and batch.currency = new.currency
+    where ledger.id = new.commission_ledger_id and ledger.referrer_user_id = new.user_id and ledger.currency = new.currency;
+  if not found then raise exception 'payout item recipient, account, ledger, currency, or batch is inconsistent'; end if;
+  if batch_status <> 'draft' then raise exception 'payout items may only be changed in a draft batch'; end if;
+  if ledger_state <> 'available' then raise exception 'payout item ledger must be available'; end if;
+  if account_status <> 'active' then raise exception 'payout item account must be active'; end if;
+  if ledger_commission_cents <= 0 then raise exception 'payout item ledger commission must be positive'; end if;
+  if tg_op = 'INSERT' then new.commission_cents_snapshot := ledger_commission_cents; end if;
   return new;
 end;
 $$;
-
 revoke all on function public.validate_payout_batch_item() from public;
+create trigger payout_batch_items_integrity_trigger before insert or update or delete on public.payout_batch_items for each row execute function public.validate_payout_batch_item();
 
-create trigger payout_batch_items_integrity_trigger
-before insert or update or delete on public.payout_batch_items
-for each row execute function public.validate_payout_batch_item();
-
-create function public.prevent_payout_item_ledger_reversal()
-returns trigger
-language plpgsql
-security definer
-set search_path = pg_catalog
-as $$
+create function public.prevent_payout_item_ledger_mutation()
+returns trigger language plpgsql security definer set search_path = pg_catalog as $$
 begin
-  if new.state is distinct from old.state
-     and new.state in ('reversed', 'void')
-     and exists (select 1 from public.payout_batch_items where commission_ledger_id = old.id) then
-    raise exception 'commission ledger with payout item cannot be reversed or voided';
+  if exists (select 1 from public.payout_batch_items where commission_ledger_id = old.id) then
+    if new.eligible_net_cents is distinct from old.eligible_net_cents or new.commission_rate_bps is distinct from old.commission_rate_bps
+       or new.currency is distinct from old.currency or new.term_month_number is distinct from old.term_month_number
+       or new.referrer_user_id is distinct from old.referrer_user_id or new.referred_user_id is distinct from old.referred_user_id
+       or new.referral_attribution_id is distinct from old.referral_attribution_id or new.subscription_entitlement_id is distinct from old.subscription_entitlement_id
+       or new.source_invoice_id is distinct from old.source_invoice_id
+       or new.collection_at is distinct from old.collection_at or new.available_at is distinct from old.available_at then raise exception 'commission ledger financial basis and attribution are immutable after payout selection'; end if;
+    if new.state in ('reversed', 'void') and new.state is distinct from old.state then raise exception 'commission ledger with payout item cannot be reversed or voided'; end if;
+    if old.state = 'available' and new.state = 'paid' and pg_trigger_depth() = 1 then raise exception 'selected commission ledger may only be paid by payout batch settlement'; end if;
   end if;
   return new;
 end;
 $$;
+revoke all on function public.prevent_payout_item_ledger_mutation() from public;
+create trigger commission_ledger_payout_item_mutation_trigger before update on public.commission_ledger for each row execute function public.prevent_payout_item_ledger_mutation();
 
-revoke all on function public.prevent_payout_item_ledger_reversal() from public;
-
-create trigger commission_ledger_payout_item_state_trigger
-before update of state on public.commission_ledger
-for each row execute function public.prevent_payout_item_ledger_reversal();
+create function public.reconcile_paid_payout_batch()
+returns trigger language plpgsql security definer set search_path = pg_catalog as $$
+declare item_count integer; reconciled_count integer;
+begin
+  if old.status = 'submitted' and new.status = 'paid' then
+    select count(*) into item_count from public.payout_batch_items where payout_batch_id = new.id;
+    if item_count = 0 then raise exception 'paid payout batch must contain at least one item'; end if;
+    update public.commission_ledger ledger set state = 'paid' from public.payout_batch_items item
+      where item.payout_batch_id = new.id and ledger.id = item.commission_ledger_id and ledger.state = 'available';
+    get diagnostics reconciled_count = row_count;
+    if reconciled_count <> item_count then raise exception 'paid payout batch could not reconcile every selected ledger'; end if;
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.reconcile_paid_payout_batch() from public;
+create trigger payout_batches_paid_reconciliation_trigger after update on public.payout_batches for each row execute function public.reconcile_paid_payout_batch();
 
 create function public.prevent_payout_item_account_deactivation()
-returns trigger
-language plpgsql
-security definer
-set search_path = pg_catalog
-as $$
+returns trigger language plpgsql security definer set search_path = pg_catalog as $$
 begin
-  if new.status is distinct from old.status
-     and new.status <> 'active'
-     and exists (select 1 from public.payout_batch_items where payout_account_id = old.id) then
-    raise exception 'payout account with payout item must remain active';
-  end if;
+  if new.status is distinct from old.status and new.status <> 'active' and exists (select 1 from public.payout_batch_items where payout_account_id = old.id) then raise exception 'payout account with payout item must remain active'; end if;
   return new;
 end;
 $$;
-
 revoke all on function public.prevent_payout_item_account_deactivation() from public;
-
-create trigger payout_accounts_payout_item_status_trigger
-before update of status on public.payout_accounts
-for each row execute function public.prevent_payout_item_account_deactivation();
+create trigger payout_accounts_payout_item_status_trigger before update of status on public.payout_accounts for each row execute function public.prevent_payout_item_account_deactivation();
 
 create table public.stripe_webhook_events (
   id bigint generated always as identity primary key,
