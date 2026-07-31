@@ -26,6 +26,9 @@ test('middleware protects account and admin routes through Clerk', async () => {
   assert.match(middleware, /['"]\/account\(\.\*\)['"]/);
   assert.match(middleware, /['"]\/admin\(\.\*\)['"]/);
   assert.match(middleware, /auth\.protect\(\)/);
+  assert.match(middleware, /app\.plinkosolutions\.com/);
+  assert.match(middleware, /NextResponse\.redirect/);
+  assert.match(middleware, /new URL\(['"]\/account['"]/);
   assert.match(middleware, /matcher:/);
   assert.doesNotMatch(middleware, /['"]\/\(\.\*\)['"]/);
 });
