@@ -429,6 +429,18 @@ footer p { font-size: 14.5px; max-width: 460px; }
 .member-copy { margin: 12px 0 28px; color: var(--muted); }
 .member-email { margin-top: 12px; font-family: var(--mono); font-size: 14px; color: var(--muted); }
 .member-panel .cl-rootBox { width: 100%; }
+.member-dashboard { width: min(100%, 680px); }
+.member-dashboard h2 { font-size: 20px; }
+.member-status, .member-link, .member-stats { margin-top: 24px; }
+.member-status { display: grid; gap: 5px; padding: 16px; border-left: 3px solid var(--green-deep); background: #f0f7f1; }
+.member-status span, .member-link p { color: var(--muted); font-size: 14px; }
+.member-link { padding-top: 22px; border-top: 1px solid var(--line); }
+.member-link a { display: block; overflow-wrap: anywhere; margin: 8px 0; color: var(--green-dark); font-family: var(--mono); font-size: 13px; }
+.member-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.member-stats div { padding: 14px; background: var(--paper-2); border-radius: 8px; }
+.member-stats dt { color: var(--muted); font-family: var(--mono); font-size: 11px; }
+.member-stats dd { margin-top: 6px; font-size: 21px; font-weight: 700; }
+@media (max-width: 560px) { .member-stats { grid-template-columns: 1fr; } }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }

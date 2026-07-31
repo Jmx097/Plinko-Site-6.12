@@ -49,7 +49,9 @@ test('the account page is server-rendered from Clerk user data only', async () =
   assert.match(account, /await\s+currentUser\(\)/);
   assert.match(account, /firstName/);
   assert.match(account, /emailAddresses/);
-  assert.match(account, /Referral and payout data will appear after account activation\./);
+  assert.match(account, /getMemberOverview/);
+  assert.match(account, /Your referral link/);
+  assert.match(account, /referralUrl/);
 });
 
 test('the auth slice does not introduce local credentials or privileged data access', async () => {

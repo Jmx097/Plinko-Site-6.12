@@ -10,6 +10,10 @@ const migrationPath = path.resolve(
 
 const sql = await readFile(migrationPath, 'utf8');
 const compact = sql.toLowerCase().replace(/\s+/g, ' ');
+const memberActivationMigration = (await readFile(
+  path.resolve(import.meta.dirname, '../supabase/migrations/20260731194500_member_activation_uniqueness.sql'),
+  'utf8',
+)).toLowerCase().replace(/\s+/g, ' ');
 
 function tableBody(table) {
   const match = compact.match(
@@ -52,8 +56,9 @@ test('Clerk identities remain text subjects and member policies use JWT sub', ()
   assert.doesNotMatch(compact, /create policy[^;]*\bfor\s+(all|insert|update|delete)[^;]*\bto\s+(anon|public)/);
 });
 
-test('referrals enforce URL-safe codes, one referred user, and no self-referral', () => {
+test('referrals enforce URL-safe codes, one stable member link, one referred user, and no self-referral', () => {
   assert.match(tableBody('referral_links'), /code text unique/);
+  assert.match(memberActivationMigration, /add constraint referral_links_owner_user_id_key unique \(owner_user_id\)/);
   assert.match(tableBody('referral_links'), /check \(code ~ '\^\[a-z0-9\]\[a-z0-9_-\]\*\$'\)/);
   const attributions = tableBody('referral_attributions');
   assert.match(attributions, /referred_user_id text unique/);
