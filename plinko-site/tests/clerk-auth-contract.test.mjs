@@ -19,11 +19,12 @@ test('the root layout uses ClerkProvider', async () => {
   assert.match(layout, /<ClerkProvider[\s>]/);
 });
 
-test('middleware protects only the account route through Clerk', async () => {
+test('middleware protects account and admin routes through Clerk', async () => {
   const middleware = await source('middleware.js');
   assert.match(middleware, /clerkMiddleware/);
   assert.match(middleware, /createRouteMatcher/);
   assert.match(middleware, /['"]\/account\(\.\*\)['"]/);
+  assert.match(middleware, /['"]\/admin\(\.\*\)['"]/);
   assert.match(middleware, /auth\.protect\(\)/);
   assert.match(middleware, /matcher:/);
   assert.doesNotMatch(middleware, /['"]\/\(\.\*\)['"]/);
