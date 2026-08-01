@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 
 import { setMemberModuleGrant, setSupportRequestStatus } from '../../lib/member-dashboard.mjs';
 import { requireAdminEmail } from '../../lib/plinko-pocket-admin.mjs';
+import { setWaitlistStatus } from '../../lib/waitlist.mjs';
 
 async function verifiedStaffEmail() {
   const { userId } = await auth();
@@ -23,5 +24,11 @@ export async function updateGrantForMember(userId, moduleKey, formData) {
 export async function updateSupportStatus(requestId, formData) {
   await verifiedStaffEmail();
   await setSupportRequestStatus({ requestId, status: formData.get('status') });
+  revalidatePath('/admin');
+}
+
+export async function updateWaitlistStatus(entryId, formData) {
+  const actorEmail = await verifiedStaffEmail();
+  await setWaitlistStatus({ entryId, status: formData.get('status'), actorEmail });
   revalidatePath('/admin');
 }
