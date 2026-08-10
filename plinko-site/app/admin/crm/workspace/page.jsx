@@ -24,7 +24,19 @@ export default async function CrmWorkspacePage() {
 
   const { governance, freshness, stations } = await getCrmStationOverview();
   const metrics = stations.metrics;
-  const records = Array.isArray(stations.reviewQueue) ? stations.reviewQueue : [];
+  const records = Array.isArray(stations.reviewQueue) ? stations.reviewQueue.map((record) => {
+    const account = record.account || {};
+    return {
+      id: account.id || record.id,
+      displayName: account.displayName,
+      externalReference: account.externalReference,
+      createdAt: account.createdAt,
+      updatedAt: account.updatedAt,
+      source: account.source,
+      queueState: record.queueState,
+      nextGate: record.nextGate,
+    };
+  }).filter((record) => record.id) : [];
 
   return (
     <main className="workspace-page">

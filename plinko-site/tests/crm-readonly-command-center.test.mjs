@@ -43,6 +43,9 @@ test('CRM workspace is a separate, staff-gated, read-only table-first route', as
   assert.match(page, /getCrmStationOverview\(\)/);
   assert.match(page, /This Week — Governed Campaigns/);
   assert.match(page, /CrmWorkspace/);
+  assert.match(page, /record\.account/);
+  assert.match(page, /displayName: account\.displayName/);
+  assert.match(page, /externalReference: account\.externalReference/);
   assert.match(page, /freshness\.checked_at/);
   assert.doesNotMatch(page, /<form/);
   assert.doesNotMatch(page, /<button/);
