@@ -1,4 +1,5 @@
 import { auth, currentUser } from '@clerk/nextjs/server';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
 import { getCrmStationOverview } from '../../../lib/crm-api.mjs';
@@ -38,6 +39,7 @@ export default async function CrmAdminPage() {
         <p className="member-kicker">Plinko Revenue OS · Station 1–2</p>
         <h1 id="crm-title">Governed CRM command center</h1>
         <p className="admin-intro">Value practiced: account fit, contact research, draft review, and send approval remain separate decisions. This view is read-only and cannot approve, enrich, draft, export, or send.</p>
+        <p className="member-link"><Link href="/admin/crm/workspace">Open the table-first workspace for this week’s governed campaigns →</Link></p>
         <p className="member-email">Freshness: {new Date(freshness.checked_at).toLocaleString('en-CA')} · Mode: {governance.mode}</p>
 
         <section aria-labelledby="crm-metrics-title">

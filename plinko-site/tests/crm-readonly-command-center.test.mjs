@@ -35,6 +35,21 @@ test('staff CRM page presents a read-only queue and retains Clerk plus allowlist
   assert.doesNotMatch(page, /actions/);
 });
 
+test('CRM workspace is a separate, staff-gated, read-only table-first route', async () => {
+  const page = await source('app/admin/crm/workspace/page.jsx');
+  assert.match(page, /@clerk\/nextjs\/server/);
+  assert.match(page, /await auth\(\)/);
+  assert.match(page, /requireAdminEmail\(user\)/);
+  assert.match(page, /getCrmStationOverview\(\)/);
+  assert.match(page, /This Week — Governed Campaigns/);
+  assert.match(page, /workspace-table/);
+  assert.match(page, /<details/);
+  assert.match(page, /freshness\.checked_at/);
+  assert.doesNotMatch(page, /<form/);
+  assert.doesNotMatch(page, /<button/);
+  assert.doesNotMatch(page, /actions/);
+});
+
 test('no CRM server action remains available to mutate approval state', async () => {
   const actions = await source('app/admin/crm/actions.js');
   assert.doesNotMatch(actions, /'use server'/);
