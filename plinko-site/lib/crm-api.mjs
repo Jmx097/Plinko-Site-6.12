@@ -9,7 +9,7 @@ function requireCrmConfiguration(environment = process.env) {
   return { baseUrl, token };
 }
 
-async function crmRequest(path, { method = 'GET', body, actor, config = requireCrmConfiguration(), fetchImpl = fetch } = {}) {
+async function crmRequest(path, { method = 'GET', body, config = requireCrmConfiguration(), fetchImpl = fetch } = {}) {
   const response = await fetchImpl(`${config.baseUrl}${path}`, {
     method,
     cache: 'no-store',
@@ -17,7 +17,6 @@ async function crmRequest(path, { method = 'GET', body, actor, config = requireC
       authorization: `Bearer ${config.token}`,
       accept: 'application/json',
       ...(body ? { 'content-type': 'application/json' } : {}),
-      ...(actor ? { 'x-crm-actor': actor } : {}),
     },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
@@ -44,11 +43,25 @@ export function getCrmAccountWorkspace(accountId, environment = process.env) {
   return crmRequest(`/crm/accounts/${encodeURIComponent(accountId)}/workspace`, { config: requireCrmConfiguration(environment) });
 }
 
-export function addCrmAccountNote(accountId, note, actor, environment = process.env) {
+export function addCrmAccountNote(accountId, note, environment = process.env) {
   return crmRequest(`/crm/accounts/${encodeURIComponent(accountId)}/notes`, {
     method: 'POST',
     body: { note },
-    actor,
+    config: requireCrmConfiguration(environment),
+  });
+}
+
+export function addCrmFollowUpTask(accountId, task, environment = process.env) {
+  return crmRequest(`/crm/accounts/${encodeURIComponent(accountId)}/tasks`, {
+    method: 'POST',
+    body: task,
+    config: requireCrmConfiguration(environment),
+  });
+}
+
+export function completeCrmFollowUpTask(accountId, taskId, environment = process.env) {
+  return crmRequest(`/crm/accounts/${encodeURIComponent(accountId)}/tasks/${encodeURIComponent(taskId)}/complete`, {
+    method: 'POST',
     config: requireCrmConfiguration(environment),
   });
 }

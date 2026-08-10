@@ -53,29 +53,34 @@ test('CRM workspace is a separate, staff-gated, read-only table-first route', as
   assert.doesNotMatch(page, /actions/);
 });
 
-test('CRM workspace has real account navigation, source-intake people, and append-only note controls', async () => {
+test('CRM workspace has a conventional account workspace: structured contacts, next action, activity, and governed follow-up tasks', async () => {
   const client = await source('app/admin/crm/workspace/CrmWorkspace.jsx');
   assert.match(client, /'use client'/);
-  assert.match(client, /useEffect/);
-  assert.match(client, /workspace-details/);
-  assert.match(client, /scrollIntoView/);
-  assert.match(client, /People \/ contacts/);
-  assert.match(client, /contact review pending/);
-  assert.match(client, /Internal notes/);
-  assert.match(client, /append-only/);
+  assert.match(client, /Next action/);
+  assert.match(client, /Open follow-ups/);
+  assert.match(client, /Activity/);
+  assert.match(client, /People/);
+  assert.match(client, /Source intake/);
+  assert.match(client, /Add follow-up/);
+  assert.match(client, /Complete task/);
+  assert.match(client, /owner \{task\.owner/);
+  assert.match(client, /Source &amp; governance/);
   assert.match(client, /method: 'POST'/);
   assert.match(client, /\/api\/admin\/crm\/accounts/);
   assert.doesNotMatch(client, /\/crm\/approvals/);
 });
 
-test('account workspace route requires Clerk staff authorization and forwards only a verified actor', async () => {
+test('account workspace route requires Clerk staff access and does not forward a caller-supplied audit actor', async () => {
   const route = await source('app/api/admin/crm/accounts/[accountId]/route.js');
+  const integration = await source('lib/crm-api.mjs');
   assert.match(route, /@clerk\/nextjs\/server/);
   assert.match(route, /requireAdminEmail\(user\)/);
-  assert.match(route, /staff:\$\{requireAdminEmail\(user\)\}/);
+  assert.match(route, /requireStaffAccess/);
   assert.match(route, /getCrmAccountWorkspace/);
   assert.match(route, /addCrmAccountNote/);
+  assert.match(route, /addCrmFollowUpTask/);
   assert.doesNotMatch(route, /NEXT_PUBLIC_CRM/);
+  assert.doesNotMatch(integration, /x-crm-actor/);
   assert.doesNotMatch(route, /approvals/);
 });
 

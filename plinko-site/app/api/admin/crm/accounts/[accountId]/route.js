@@ -1,22 +1,23 @@
 import { auth, currentUser } from '@clerk/nextjs/server';
 
-import { addCrmAccountNote, getCrmAccountWorkspace } from '../../../../../../lib/crm-api.mjs';
+import { addCrmAccountNote, addCrmFollowUpTask, completeCrmFollowUpTask, getCrmAccountWorkspace } from '../../../../../../lib/crm-api.mjs';
 import { requireAdminEmail } from '../../../../../../lib/plinko-pocket-admin.mjs';
 
-async function requireStaffActor() {
+async function requireStaffAccess() {
   const { userId } = await auth();
-  if (!userId) return null;
+  if (!userId) return false;
   const user = await currentUser();
   try {
-    return `staff:${requireAdminEmail(user)}`;
+    requireAdminEmail(user);
+    return true;
   } catch {
-    return null;
+    return false;
   }
 }
 
 export async function GET(_request, { params }) {
-  const actor = await requireStaffActor();
-  if (!actor) return Response.json({ error: 'Staff access required' }, { status: 403 });
+  const allowed = await requireStaffAccess();
+  if (!allowed) return Response.json({ error: 'Staff access required' }, { status: 403 });
   const { accountId } = await params;
   try {
     return Response.json(await getCrmAccountWorkspace(accountId), { headers: { 'cache-control': 'no-store' } });
@@ -26,8 +27,8 @@ export async function GET(_request, { params }) {
 }
 
 export async function POST(request, { params }) {
-  const actor = await requireStaffActor();
-  if (!actor) return Response.json({ error: 'Staff access required' }, { status: 403 });
+  const allowed = await requireStaffAccess();
+  if (!allowed) return Response.json({ error: 'Staff access required' }, { status: 403 });
   let payload;
   try {
     payload = await request.json();
@@ -36,8 +37,17 @@ export async function POST(request, { params }) {
   }
   const { accountId } = await params;
   try {
-    return Response.json(await addCrmAccountNote(accountId, payload?.note, actor), { status: 201, headers: { 'cache-control': 'no-store' } });
+    if (payload?.intent === 'task') {
+      return Response.json(await addCrmFollowUpTask(accountId, { title: payload?.title, due_at: payload?.due_at }), { status: 201, headers: { 'cache-control': 'no-store' } });
+    }
+    if (payload?.intent === 'complete_task') {
+      return Response.json(await completeCrmFollowUpTask(accountId, payload?.task_id), { headers: { 'cache-control': 'no-store' } });
+    }
+    if (payload?.intent && payload.intent !== 'note') {
+      return Response.json({ error: 'Unsupported CRM workspace action' }, { status: 400 });
+    }
+    return Response.json(await addCrmAccountNote(accountId, payload?.note), { status: 201, headers: { 'cache-control': 'no-store' } });
   } catch (error) {
-    return Response.json({ error: error.message || 'Unable to save note' }, { status: 400 });
+    return Response.json({ error: error.message || 'Unable to update account workspace' }, { status: 400 });
   }
 }
