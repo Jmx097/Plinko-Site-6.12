@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 const queueLabels = {
   station_1_account_review: 'Account review',
@@ -51,6 +51,12 @@ export default function CrmWorkspace({ metrics, records }) {
   const [activeView, setActiveView] = useState('week');
   const [filter, setFilter] = useState('all');
   const [selectedId, setSelectedId] = useState(null);
+  const [workspace, setWorkspace] = useState(null);
+  const [workspaceError, setWorkspaceError] = useState('');
+  const [loadingWorkspace, setLoadingWorkspace] = useState(false);
+  const [note, setNote] = useState('');
+  const [noteStatus, setNoteStatus] = useState('');
+  const [savingNote, setSavingNote] = useState(false);
 
   const filters = useMemo(() => [
     { id: 'all', label: 'All accounts' },
@@ -59,19 +65,65 @@ export default function CrmWorkspace({ metrics, records }) {
     { id: 'blocked_rejected', label: 'Blocked' },
   ], []);
 
-  const visibleRecords = useMemo(() => {
-    if (filter === 'all') return records;
-    return records.filter((record) => record.queueState === filter);
-  }, [filter, records]);
-
+  const visibleRecords = useMemo(() => filter === 'all' ? records : records.filter((record) => record.queueState === filter), [filter, records]);
   const selectedRecord = useMemo(() => records.find((record) => record.id === selectedId) || null, [records, selectedId]);
   const heading = activeView === 'campaigns' ? 'Campaign view — governed revenue work' : activeView === 'activity' ? 'Recent governed activity' : activeView === 'accounts' ? 'All source-intake accounts' : 'Accounts requiring a governed next step';
-  const description = activeView === 'activity' ? 'Select an account to inspect its current state and recorded source context. No activity can be edited here.' : 'Choose an account row to inspect its decision context. Filtering and navigation are local, read-only views of the current queue.';
+  const description = activeView === 'activity' ? 'Open an account to inspect its source-intake people and internal notes.' : 'Open an account row to inspect its people, source evidence, and persistent internal notes.';
+
+  useEffect(() => {
+    if (!selectedId) {
+      setWorkspace(null);
+      return undefined;
+    }
+    const controller = new AbortController();
+    setLoadingWorkspace(true);
+    setWorkspace(null);
+    setWorkspaceError('');
+    setNote('');
+    setNoteStatus('');
+    fetch(`/api/admin/crm/accounts/${encodeURIComponent(selectedId)}`, { cache: 'no-store', signal: controller.signal })
+      .then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload?.error || 'Unable to load account details');
+        setWorkspace(payload);
+      })
+      .catch((error) => { if (error.name !== 'AbortError') setWorkspaceError(error.message || 'Unable to load account details'); })
+      .finally(() => { if (!controller.signal.aborted) setLoadingWorkspace(false); });
+    return () => controller.abort();
+  }, [selectedId]);
 
   function selectView(id) {
     setActiveView(id);
     setSelectedId(null);
     if (id === 'week') setFilter('all');
+  }
+
+  function openAccount(id) {
+    setSelectedId(id);
+    requestAnimationFrame(() => document.getElementById('workspace-details')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  }
+
+  async function submitNote(event) {
+    event.preventDefault();
+    if (!selectedId || !note.trim() || savingNote) return;
+    setSavingNote(true);
+    setNoteStatus('');
+    try {
+      const response = await fetch(`/api/admin/crm/accounts/${encodeURIComponent(selectedId)}`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ note: note.trim() }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload?.error || 'Unable to save note');
+      setNote('');
+      setNoteStatus('Saved to the append-only account history.');
+      const refreshed = await fetch(`/api/admin/crm/accounts/${encodeURIComponent(selectedId)}`, { cache: 'no-store' });
+      const refreshedPayload = await refreshed.json();
+      if (refreshed.ok) setWorkspace(refreshedPayload);
+    } catch (error) {
+      setNoteStatus(error.message || 'Unable to save note');
+    } finally {
+      setSavingNote(false);
+    }
   }
 
   return <>
@@ -92,36 +144,44 @@ export default function CrmWorkspace({ metrics, records }) {
     <section className="workspace-panel" aria-labelledby="workspace-queue-title">
       <div className="workspace-panel-heading">
         <div><p className="workspace-eyebrow">{activeView === 'campaigns' ? 'Campaign workspace' : activeView === 'activity' ? 'Activity lens' : 'Current operating queue'}</p><h2 id="workspace-queue-title">{heading}</h2></div>
-        <p>{visibleRecords.length} visible record{visibleRecords.length === 1 ? '' : 's'} · no contact data or execution controls in this view</p>
+        <p>{visibleRecords.length} visible record{visibleRecords.length === 1 ? '' : 's'} · open an account to see source-intake people and notes</p>
       </div>
       <div className="workspace-filter-bar" aria-label="Queue filters">
         {filters.map((item) => <button key={item.id} type="button" className={filter === item.id ? 'is-active' : ''} aria-pressed={filter === item.id} onClick={() => { setFilter(item.id); setSelectedId(null); }}>{item.label}</button>)}
       </div>
       <p className="workspace-interaction-hint">{description}</p>
-
       {visibleRecords.length ? <div className="workspace-table-wrap"><table className="workspace-table">
         <thead><tr><th scope="col">Account</th><th scope="col">Current gate</th><th scope="col">Next permitted action</th><th scope="col">Evidence</th><th scope="col">Updated</th></tr></thead>
-        <tbody>{visibleRecords.map((record) => (
-          <tr key={record.id} className={selectedId === record.id ? 'is-selected' : ''}>
-            <td><button type="button" className="workspace-row-button" onClick={() => setSelectedId(record.id)} aria-expanded={selectedId === record.id}><strong>{record.displayName || 'Unnamed source-intake account'}</strong><span className="workspace-id">Open decision context · {record.id}</span></button></td>
-            <td><span className={`workspace-chip ${queueTones[record.queueState] || ''}`}>{queueLabels[record.queueState] || record.queueState || 'Review'}</span></td>
-            <td><strong>{record.nextGate || 'No further gate'}</strong><span className="workspace-next">{gateCopy(record)}</span></td>
-            <td>{record.externalReference ? <span className="workspace-reference">{record.externalReference}</span> : <span className="workspace-muted">No source reference</span>}</td>
-            <td>{formatDate(record.createdAt)}</td>
-          </tr>
-        ))}</tbody>
+        <tbody>{visibleRecords.map((record) => <tr key={record.id} className={selectedId === record.id ? 'is-selected' : ''}>
+          <td><button type="button" className="workspace-row-button" onClick={() => openAccount(record.id)} aria-expanded={selectedId === record.id}><strong>{record.displayName || 'Unnamed source-intake account'}</strong><span className="workspace-id">Open people and notes · {record.id}</span></button></td>
+          <td><span className={`workspace-chip ${queueTones[record.queueState] || ''}`}>{queueLabels[record.queueState] || record.queueState || 'Review'}</span></td>
+          <td><strong>{record.nextGate || 'No further gate'}</strong><span className="workspace-next">{gateCopy(record)}</span></td>
+          <td>{record.externalReference ? <span className="workspace-reference">{record.externalReference}</span> : <span className="workspace-muted">No source reference</span>}</td>
+          <td>{formatDate(record.updatedAt || record.createdAt)}</td>
+        </tr>)}</tbody>
       </table></div> : <p className="workspace-empty">No records match this filter.</p>}
     </section>
 
-    <section className="workspace-details" aria-labelledby="workspace-details-title">
+    <section id="workspace-details" className="workspace-details" aria-labelledby="workspace-details-title" tabIndex={-1}>
       <div className="workspace-panel-heading">
-        <div><p className="workspace-eyebrow">Decision context</p><h2 id="workspace-details-title">{selectedRecord ? selectedRecord.displayName || 'Unnamed source-intake account' : 'Select an account to inspect it'}</h2></div>
-        <p>{selectedRecord ? 'The open detail is a read-only explanation of its current governed gate.' : 'Click an account name in the table to open its source and policy context here.'}</p>
+        <div><p className="workspace-eyebrow">Account workspace</p><h2 id="workspace-details-title">{selectedRecord ? selectedRecord.displayName || 'Unnamed source-intake account' : 'Select an account to inspect it'}</h2></div>
+        <p>{selectedRecord ? 'People and notes are loaded for this account only.' : 'Click an account name in the table to open its people and persistent notes here.'}</p>
       </div>
-      {selectedRecord ? <details open className="workspace-detail">
-        <summary><span><strong>{queueLabels[selectedRecord.queueState] || selectedRecord.queueState || 'Review'}</strong><small>Next: {selectedRecord.nextGate || 'none'}</small></span><span aria-hidden="true">−</span></summary>
-        <div><dl><div><dt>Governed record</dt><dd>{selectedRecord.id}</dd></div><div><dt>Source reference</dt><dd>{selectedRecord.externalReference || 'No source reference supplied'}</dd></div><div><dt>Current gate</dt><dd>{queueLabels[selectedRecord.queueState] || selectedRecord.queueState || 'Review'}</dd></div><div><dt>Created</dt><dd>{formatDate(selectedRecord.createdAt)}</dd></div></dl><p>{gateCopy(selectedRecord)}</p><p className="workspace-policy">Policy boundary: account fit, contact research, draft review, and manual execution remain separate decisions. This workspace cannot approve, enrich, draft, export, or send.</p></div>
-      </details> : <p className="workspace-empty">No account is selected. Use the table controls above to select one.</p>}
+      {loadingWorkspace ? <p className="workspace-empty">Loading account workspace…</p> : null}
+      {workspaceError ? <p className="workspace-empty" role="alert">{workspaceError}</p> : null}
+      {workspace ? <div className="workspace-detail">
+        <p className="workspace-policy">{workspace.governance?.contacts} {workspace.governance?.notes}</p>
+        <h3>People / contacts ({workspace.contacts?.length || 0})</h3>
+        {workspace.contacts?.length ? <ul className="workspace-contact-list">{workspace.contacts.map((contact) => <li key={contact.id}><strong>{contact.full_name}</strong>{contact.title ? <span> · {contact.title}</span> : null}<small>{contact.contact_approval === 'approved' ? 'Contact approved' : 'Source intake — contact review pending'} · {contact.source}</small></li>)}</ul> : <p className="workspace-empty">No source-intake people are attached to this account yet.</p>}
+        <h3>Internal notes</h3>
+        <form className="workspace-note-form" onSubmit={submitNote}>
+          <label htmlFor="account-note">Append a durable internal note</label>
+          <textarea id="account-note" value={note} onChange={(event) => setNote(event.target.value)} maxLength={2000} rows={4} placeholder="Record context, decision rationale, or follow-up needed. Notes cannot be edited or deleted." />
+          <div><small>{note.length}/2000 · append-only</small><button type="submit" disabled={!note.trim() || savingNote}>{savingNote ? 'Saving…' : 'Save note'}</button></div>
+          {noteStatus ? <p role="status">{noteStatus}</p> : null}
+        </form>
+        {workspace.notes?.length ? <ol className="workspace-note-list">{workspace.notes.map((item) => <li key={item.id}><p>{item.body}</p><small>{item.actor} · {formatDate(item.occurred_at)}</small></li>)}</ol> : <p className="workspace-empty">No internal notes yet.</p>}
+      </div> : null}
     </section>
   </>;
 }

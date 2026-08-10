@@ -7,17 +7,18 @@ async function source(path) {
   return readFile(new URL(path, root), 'utf8');
 }
 
-test('CRM command-center integration is server-only and reads only the overview contract', async () => {
+test('CRM integration is server-only, exposes account workspace reads, and limits writes to append-only notes', async () => {
   const integration = await source('lib/crm-api.mjs');
   assert.match(integration, /import 'server-only'/);
   assert.match(integration, /CRM_API_BASE_URL/);
   assert.match(integration, /CRM_API_TOKEN/);
   assert.match(integration, /\/crm\/stations\/overview\?limit=100/);
+  assert.match(integration, /\/crm\/accounts\/\$\{encodeURIComponent\(accountId\)\}\/workspace/);
+  assert.match(integration, /\/crm\/accounts\/\$\{encodeURIComponent\(accountId\)\}\/notes/);
   assert.match(integration, /cache: 'no-store'/);
   assert.match(integration, /governance\?\.mode !== 'read_only'/);
   assert.doesNotMatch(integration, /NEXT_PUBLIC_CRM/);
   assert.doesNotMatch(integration, /\/crm\/approvals/);
-  assert.doesNotMatch(integration, /method:\s*'POST'/);
 });
 
 test('staff CRM page presents a read-only queue and retains Clerk plus allowlist gates', async () => {
@@ -52,17 +53,30 @@ test('CRM workspace is a separate, staff-gated, read-only table-first route', as
   assert.doesNotMatch(page, /actions/);
 });
 
-test('CRM workspace client interactions are read-only and have real controls', async () => {
+test('CRM workspace has real account navigation, source-intake people, and append-only note controls', async () => {
   const client = await source('app/admin/crm/workspace/CrmWorkspace.jsx');
   assert.match(client, /'use client'/);
-  assert.match(client, /useState/);
-  assert.match(client, /<button/);
-  assert.match(client, /onClick/);
-  assert.match(client, /<details/);
-  assert.match(client, /filter/);
-  assert.doesNotMatch(client, /fetch\(/);
-  assert.doesNotMatch(client, /<form/);
-  assert.doesNotMatch(client, /method:\s*'POST'/);
+  assert.match(client, /useEffect/);
+  assert.match(client, /workspace-details/);
+  assert.match(client, /scrollIntoView/);
+  assert.match(client, /People \/ contacts/);
+  assert.match(client, /contact review pending/);
+  assert.match(client, /Internal notes/);
+  assert.match(client, /append-only/);
+  assert.match(client, /method: 'POST'/);
+  assert.match(client, /\/api\/admin\/crm\/accounts/);
+  assert.doesNotMatch(client, /\/crm\/approvals/);
+});
+
+test('account workspace route requires Clerk staff authorization and forwards only a verified actor', async () => {
+  const route = await source('app/api/admin/crm/accounts/[accountId]/route.js');
+  assert.match(route, /@clerk\/nextjs\/server/);
+  assert.match(route, /requireAdminEmail\(user\)/);
+  assert.match(route, /staff:\$\{requireAdminEmail\(user\)\}/);
+  assert.match(route, /getCrmAccountWorkspace/);
+  assert.match(route, /addCrmAccountNote/);
+  assert.doesNotMatch(route, /NEXT_PUBLIC_CRM/);
+  assert.doesNotMatch(route, /approvals/);
 });
 
 test('no CRM server action remains available to mutate approval state', async () => {
