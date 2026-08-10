@@ -42,12 +42,24 @@ test('CRM workspace is a separate, staff-gated, read-only table-first route', as
   assert.match(page, /requireAdminEmail\(user\)/);
   assert.match(page, /getCrmStationOverview\(\)/);
   assert.match(page, /This Week — Governed Campaigns/);
-  assert.match(page, /workspace-table/);
-  assert.match(page, /<details/);
+  assert.match(page, /CrmWorkspace/);
   assert.match(page, /freshness\.checked_at/);
   assert.doesNotMatch(page, /<form/);
   assert.doesNotMatch(page, /<button/);
   assert.doesNotMatch(page, /actions/);
+});
+
+test('CRM workspace client interactions are read-only and have real controls', async () => {
+  const client = await source('app/admin/crm/workspace/CrmWorkspace.jsx');
+  assert.match(client, /'use client'/);
+  assert.match(client, /useState/);
+  assert.match(client, /<button/);
+  assert.match(client, /onClick/);
+  assert.match(client, /<details/);
+  assert.match(client, /filter/);
+  assert.doesNotMatch(client, /fetch\(/);
+  assert.doesNotMatch(client, /<form/);
+  assert.doesNotMatch(client, /method:\s*'POST'/);
 });
 
 test('no CRM server action remains available to mutate approval state', async () => {

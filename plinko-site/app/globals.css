@@ -508,8 +508,10 @@ footer p { font-size: 14.5px; max-width: 460px; }
 .workspace-status { display: grid; align-content: start; gap: 7px; min-width: 235px; padding: 16px; border-radius: 10px; background: #e4eee6; color: #315b3e; font-family: var(--mono); font-size: 12px; }
 .workspace-status strong { color: #1d482c; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; }
 .workspace-nav { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 36px; border: 1px solid #3d4c45; border-top: 0; background: #1b2822; color: #c4d0c8; font-family: var(--mono); font-size: 12px; }
-.workspace-nav span, .workspace-nav a { padding: 8px 10px; border-radius: 6px; }
-.workspace-nav span[aria-current="page"] { background: #3c9b60; color: #fff; }
+.workspace-nav button, .workspace-nav a { padding: 8px 10px; border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.workspace-nav button.is-active { background: #3c9b60; color: #fff; }
+.workspace-nav button:hover, .workspace-nav button:focus-visible { background: #304339; color: #fff; outline: 2px solid #8fd4a3; outline-offset: 2px; }
+.workspace-nav button.is-active:hover, .workspace-nav button.is-active:focus-visible { background: #3c9b60; }
 .workspace-nav a { margin-left: auto; color: #ecf1ed; text-decoration: underline; text-underline-offset: 3px; }
 .workspace-metrics { display: grid; grid-template-columns: repeat(6, 1fr); gap: 1px; border: 1px solid #d8d3c8; background: #d8d3c8; }
 .workspace-metric { min-height: 112px; padding: 18px; background: #fffdf8; }
@@ -523,11 +525,20 @@ footer p { font-size: 14.5px; max-width: 460px; }
 .workspace-panel-heading h2 { margin-top: 5px; color: var(--ink); font-size: 25px; }
 .workspace-panel-heading > p { max-width: 350px; color: #68716b; font-family: var(--mono); font-size: 12px; line-height: 1.5; text-align: right; }
 .workspace-eyebrow { color: #39734b; font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+.workspace-filter-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+.workspace-filter-bar button { padding: 8px 10px; border: 1px solid #c9c8bf; border-radius: 999px; background: #fffdf8; color: #526058; cursor: pointer; font-family: var(--mono); font-size: 11px; }
+.workspace-filter-bar button:hover, .workspace-filter-bar button:focus-visible { border-color: #39734b; outline: 2px solid #9ac9a4; outline-offset: 2px; }
+.workspace-filter-bar button.is-active { border-color: #39734b; background: #e4eee6; color: #205034; font-weight: 700; }
+.workspace-interaction-hint { margin: 0 0 18px; color: #68716b; font-size: 13px; line-height: 1.5; }
 .workspace-table-wrap { overflow-x: auto; border: 1px solid #d8d3c8; border-radius: 10px; background: #fff; }
 .workspace-table { width: 100%; min-width: 940px; border-collapse: collapse; }
 .workspace-table th { padding: 13px 16px; background: #eaf0e9; color: #53615a; font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: .04em; text-align: left; text-transform: uppercase; }
 .workspace-table td { padding: 17px 16px; border-top: 1px solid #e2ded5; color: #39443e; font-size: 14px; line-height: 1.35; vertical-align: top; }
 .workspace-table td:first-child { min-width: 190px; color: var(--ink); }
+.workspace-table tr.is-selected td { background: #f0f7f1; }
+.workspace-row-button { display: block; width: 100%; padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; text-align: left; }
+.workspace-row-button:hover strong, .workspace-row-button:focus-visible strong { color: #277444; text-decoration: underline; text-underline-offset: 3px; }
+.workspace-row-button:focus-visible { outline: 2px solid #3c9b60; outline-offset: 4px; border-radius: 3px; }
 .workspace-id, .workspace-next, .workspace-reference, .workspace-muted { display: block; margin-top: 5px; color: #737b75; font-family: var(--mono); font-size: 11px; line-height: 1.45; }
 .workspace-next { max-width: 270px; font-family: inherit; }
 .workspace-reference { max-width: 190px; overflow-wrap: anywhere; }
