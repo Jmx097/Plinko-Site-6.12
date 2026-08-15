@@ -590,3 +590,19 @@ footer p { font-size: 14.5px; max-width: 460px; }
   .story-caption { transition: opacity .2s; transform: none; }
   .story-hint, .bridge .red-dot, .manifesto .red-dot { animation: none; }
 }
+
+/* ===== CRM contributor intake (/crm) ===== */
+.crm-contributor-page { min-height: 100vh; padding: 60px 24px; background: var(--ink); }
+.crm-contributor-panel { width: min(100%, 760px); margin: 0 auto; padding: 36px; border: 1px solid #3a362f; border-radius: var(--radius); background: var(--paper); }
+.crm-contributor-panel h1 { font-size: clamp(34px, 5vw, 46px); }
+.crm-contributor-panel h2 { margin: 38px 0 14px; font-size: 25px; }
+.crm-contributor-intro { margin-top: 16px; color: var(--muted); }
+.crm-contributor-form { display: grid; gap: 16px; margin-top: 28px; padding: 22px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.crm-contributor-form label { display: grid; gap: 6px; font-size: 14px; font-weight: 600; }
+.crm-contributor-form label span { color: var(--muted); font-weight: 400; }
+.crm-contributor-form input { width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 11px 12px; background: #fff; color: var(--ink); font: inherit; }
+.crm-contributor-form .btn { justify-self: start; }
+.crm-contributor-form .btn:disabled { cursor: wait; opacity: .65; transform: none; }
+.crm-contributor-message { padding: 11px 12px; border-radius: 7px; background: #e8f4eb; color: var(--green-dark); font-size: 14px; }
+.crm-contributor-list > p { color: var(--muted); }
+@media (max-width: 560px) { .crm-contributor-page { padding: 32px 16px; } .crm-contributor-panel { padding: 26px 20px; } }
