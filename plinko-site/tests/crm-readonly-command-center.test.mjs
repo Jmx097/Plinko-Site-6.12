@@ -33,6 +33,17 @@ test('shared workspace retains a conventional CRM work loop and manual-only boun
   assert.match(client, /create_campaign/);
   assert.match(client, /create_contact/);
   assert.match(client, /manual_execution/);
+  assert.match(client, /Choose people and records by name/);
+  assert.match(client, /OptionSelect/);
+  assert.doesNotMatch(client, /placeholder=\{field/);
+});
+
+test('workspace API augments the workbench with the authoritative account directory', async () => {
+  const route = await source('app/api/crm/workspace/route.js');
+  const broker = await source('lib/crm-workspace.mjs');
+  assert.match(route, /crmWorkspaceAction\('list_accounts'/);
+  assert.match(route, /accounts: accountDirectory\.accounts/);
+  assert.match(broker, /list_accounts: \{ method: 'GET', path: \(\) => '\/crm\/accounts\?limit=100' \}/);
 });
 
 test('legacy account API cannot bypass the shared actor-aware broker', async () => {

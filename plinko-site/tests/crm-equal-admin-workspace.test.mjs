@@ -19,6 +19,8 @@ test('every CRM command maps only the documented payload fields', () => {
     assert.equal(Object.hasOwn(request.body, 'ignored'), false);
   }
   assert.deepEqual(crmActionRequest('create_draft', payloads.create_draft).body, { content: { body: 'Hello' } });
+  assert.deepEqual(crmActionRequest('list_accounts', {}).body, undefined);
+  assert.equal(crmActionRequest('list_accounts', {}).path, '/crm/accounts?limit=100');
   assert.throws(() => crmActionRequest('../../admin', {}), /Unsupported CRM action/);
 });
 

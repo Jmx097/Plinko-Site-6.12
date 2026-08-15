@@ -1,6 +1,7 @@
 // Server-side allowlist. Browser input cannot select an upstream URL or add fields.
 export const CRM_ACTIONS = {
   overview: { method: 'GET', path: () => '/crm/campaign-workbench' },
+  list_accounts: { method: 'GET', path: () => '/crm/accounts?limit=100' },
   create_account: { method: 'POST', path: () => '/crm/accounts', fields: ['source', 'display_name', 'external_reference'] },
   create_account_approval: { method: 'POST', path: () => '/crm/approvals', fields: ['account_id', 'gate', 'decision'] },
   create_contact: { method: 'POST', path: () => '/crm/contacts', fields: ['account_id', 'source', 'external_reference', 'full_name', 'title', 'email', 'phone', 'linkedin_url'] },

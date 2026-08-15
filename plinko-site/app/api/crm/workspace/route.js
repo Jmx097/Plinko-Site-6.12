@@ -12,8 +12,14 @@ export async function GET() {
   const actorEmail = await verifiedCrmAdminEmail();
   if (!actorEmail) return Response.json({ error: 'Staff access required' }, { status: 403 });
   try {
-    const data = await crmWorkspaceAction('overview', {}, actorEmail);
-    return Response.json(data, { headers: { 'cache-control': 'no-store' } });
+    const [workbench, accountDirectory] = await Promise.all([
+      crmWorkspaceAction('overview', {}, actorEmail),
+      crmWorkspaceAction('list_accounts', {}, actorEmail),
+    ]);
+    // `/crm/accounts` is the authoritative account read contract.  Keep its
+    // records alongside the campaign workbench so operators can choose names,
+    // while IDs remain server-broker implementation details.
+    return Response.json({ ...workbench, accounts: accountDirectory.accounts || [] }, { headers: { 'cache-control': 'no-store' } });
   } catch { return Response.json({ error: 'CRM unavailable' }, { status: 502 }); }
 }
 
