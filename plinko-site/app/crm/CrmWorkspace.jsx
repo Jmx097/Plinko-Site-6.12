@@ -1,126 +1,197 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { buildWorkflowChoices, formatActivity, stageLabel } from './workflow.mjs';
+import { useEffect, useRef, useState } from 'react';
 
-const ACTIONS = {
-  create_account: { label: 'Add an account', help: 'Start a governed account record. It will need review before later steps unlock.' },
-  create_account_approval: { label: 'Review an account gate', help: 'Record a decision at the selected governance gate.' },
-  create_contact: { label: 'Add a contact', help: 'Choose the account by name, then add the person.' },
-  contact_approval: { label: 'Review a contact', help: 'Approve or reject a pending contact.' },
-  contact_disposition: { label: 'Update contact status', help: 'Set a non-approval contact status.' },
-  create_campaign: { label: 'Create a campaign', help: 'Create a manual call, email, or LinkedIn campaign.' },
-  add_campaign_member: { label: 'Add a person to a campaign', help: 'Choose both records by name.' },
-  create_draft: { label: 'Write a draft', help: 'Choose the campaign and person, then write the proposed text.' },
-  draft_approval: { label: 'Review a draft', help: 'Record the draft review decision.' },
-  create_attempt: { label: 'Plan manual outreach', help: 'Create a manually performed outreach step from a selected draft.' },
-  attempt_approval: { label: 'Review manual outreach', help: 'Record the execution review decision.' },
-  manual_execution: { label: 'Record manual outcome', help: 'Log what an operator did manually. This does not send anything.' },
-};
-
-const ACTIONS_BY_TAB = {
-  Accounts: ['create_account', 'create_account_approval'],
-  People: ['create_contact', 'contact_approval', 'contact_disposition'],
-  Campaigns: ['create_campaign', 'add_campaign_member', 'create_draft', 'draft_approval', 'create_attempt', 'attempt_approval', 'manual_execution'],
-};
-
-function OptionSelect({ name, label, options, required = true }) {
-  return <label>{label}<select name={name} required={required} disabled={!options.length} defaultValue="">
-    <option value="" disabled>{options.length ? `Choose ${label.toLowerCase()}` : 'No eligible records yet'}</option>
-    {options.map((option) => <option key={option.id} value={option.id}>{option.label}{option.detail ? ` — ${option.detail}` : ''}</option>)}
-  </select></label>;
+function formatDate(value, fallback = '—') {
+  if (!value) return fallback;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? fallback : date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
-function TextInput({ name, label, required = false, type = 'text', placeholder }) {
-  return <label>{label}<input name={name} type={type} required={required} placeholder={placeholder} /></label>;
+function label(value) {
+  return value ? String(value).replaceAll('_', ' ') : 'Needs review';
 }
 
-function DecisionSelect({ name = 'decision', label = 'Decision' }) {
-  return <label>{label}<select name={name} required defaultValue=""><option value="" disabled>Choose a decision</option><option value="approved">Approve</option><option value="rejected">Reject</option></select></label>;
+async function responseJson(response) {
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error || 'CRM unavailable');
+  return body;
 }
 
-function ActionForm({ action, choices, onCancel, onSubmit }) {
-  const definition = ACTIONS[action];
-  const content = (() => {
-    switch (action) {
-      case 'create_account': return <><TextInput name="display_name" label="Account name" required placeholder="Northstar Labs" /><TextInput name="source" label="Source" required placeholder="Referral, research, event…" /><TextInput name="external_reference" label="Reference (optional)" /></>;
-      case 'create_account_approval': return <><OptionSelect name="account" label="Account" options={choices.accounts} /><label>Governance gate<select name="gate" required defaultValue=""><option value="" disabled>Choose a gate</option><option value="account">Account fit</option><option value="contact">Contact review</option><option value="draft">Draft review</option><option value="send">Manual outreach review</option></select></label><DecisionSelect /></>;
-      case 'create_contact': return <><OptionSelect name="account" label="Account" options={choices.accounts} /><TextInput name="full_name" label="Full name" required placeholder="Jordan Lee" /><TextInput name="source" label="Source" required placeholder="Referral, research, event…" /><TextInput name="title" label="Role or title" /><TextInput name="email" label="Email" type="email" /><TextInput name="phone" label="Phone" type="tel" /><TextInput name="linkedin_url" label="LinkedIn URL" type="url" /><TextInput name="external_reference" label="Reference (optional)" /></>;
-      case 'contact_approval': return <><OptionSelect name="contact" label="Contact" options={choices.contacts} /><DecisionSelect /></>;
-      case 'contact_disposition': return <><OptionSelect name="contact" label="Contact" options={choices.contacts} /><label>Contact status<select name="disposition" required defaultValue=""><option value="" disabled>Choose a status</option><option value="review">Needs review</option><option value="active">Active</option><option value="do_not_contact">Do not contact</option><option value="invalid">Invalid</option></select></label></>;
-      case 'create_campaign': return <><TextInput name="name" label="Campaign name" required placeholder="Fall partner introductions" /><label>Channel<select name="channel" required defaultValue=""><option value="" disabled>Choose a manual channel</option><option value="email">Email</option><option value="call">Call</option><option value="linkedin">LinkedIn</option></select></label><TextInput name="purpose" label="Purpose" placeholder="Warm introductions" /></>;
-      case 'add_campaign_member': return <><OptionSelect name="campaign" label="Campaign" options={choices.campaigns} /><OptionSelect name="contact" label="Contact" options={choices.contacts} /></>;
-      case 'create_draft': return <><OptionSelect name="membership" label="Campaign and contact" options={choices.memberships} /><label>Draft text<textarea name="body" required placeholder="Write the proposed message or call notes…" /></label></>;
-      case 'draft_approval': return <><OptionSelect name="draft" label="Draft" options={choices.drafts} /><DecisionSelect /></>;
-      case 'create_attempt': return <><OptionSelect name="draft" label="Approved draft" options={choices.drafts} /></>;
-      case 'attempt_approval': return <><OptionSelect name="attempt" label="Manual outreach" options={choices.attempts} /><DecisionSelect /></>;
-      case 'manual_execution': return <><OptionSelect name="attempt" label="Approved manual outreach" options={choices.attempts} /><label>Outcome<textarea name="outcome_note" required placeholder="Example: Called, left voicemail; follow up next week." /></label></>;
-      default: return null;
-    }
-  })();
-  return <form className="crm-composer" onSubmit={onSubmit}><div className="crm-composer-heading"><p className="member-kicker">Guided action</p><h2>{definition.label}</h2><p>{definition.help}</p></div><div className="crm-form-fields">{content}</div><div className="crm-form-actions"><button type="submit">Record action</button><button type="button" className="crm-secondary-button" onClick={onCancel}>Cancel</button></div></form>;
-}
-
-function GateSummary({ account }) {
-  return <dl className="crm-stage-list"><div><dt>Account fit</dt><dd>{stageLabel(account.accountApproval || account.account_approval)}</dd></div><div><dt>Contact review</dt><dd>{stageLabel(account.contactApproval || account.contact_approval)}</dd></div><div><dt>Draft review</dt><dd>{stageLabel(account.draftApproval || account.draft_approval)}</dd></div><div><dt>Manual outreach</dt><dd>{stageLabel(account.sendApproval || account.send_approval)}</dd></div></dl>;
+function asIsoDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
 export default function CrmWorkspace() {
-  const [data, setData] = useState({ accounts: [], campaigns: [], contacts: [], activity: [] });
-  const [tab, setTab] = useState('Campaigns');
-  const [action, setAction] = useState('');
-  const [message, setMessage] = useState('Loading shared workspace…');
-  const choices = useMemo(() => buildWorkflowChoices(data), [data]);
+  const [view, setView] = useState('Accounts');
+  const [accounts, setAccounts] = useState([]);
+  const [campaigns, setCampaigns] = useState([]);
+  const [accountCursor, setAccountCursor] = useState(null);
+  const [campaignCursor, setCampaignCursor] = useState(null);
+  const [search, setSearch] = useState('');
+  const [detail, setDetail] = useState(null);
+  const [selectedKey, setSelectedKey] = useState(null);
+  const [tab, setTab] = useState('Overview');
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [newCampaign, setNewCampaign] = useState(false);
+  const directorySequence = useRef(0);
+  const detailSequence = useRef(0);
 
-  const load = async () => {
+  async function loadDirectory({ reset = true, kind = view, query = search, cursor } = {}) {
+    const sequence = ++directorySequence.current;
+    setBusy(true);
     try {
-      const response = await fetch('/api/crm/workspace', { cache: 'no-store' });
-      const json = await response.json();
-      setData(response.ok ? json : { accounts: [], campaigns: [], contacts: [], activity: [] });
-      setMessage(response.ok ? '' : json.error || 'CRM unavailable');
-    } catch { setMessage('CRM unavailable'); }
-  };
-  useEffect(() => { load(); }, []);
-
-  const submit = async (event) => {
-    event.preventDefault();
-    const values = Object.fromEntries(new FormData(event.currentTarget));
-    const selectedDraft = choices.drafts.find((item) => item.id === values.draft);
-    let payload;
-    switch (action) {
-      case 'create_account': payload = values; break;
-      case 'create_account_approval': payload = { account_id: values.account, gate: values.gate, decision: values.decision }; break;
-      case 'create_contact': payload = { ...values, account_id: values.account }; delete payload.account; break;
-      case 'contact_approval': payload = { contact_id: values.contact, decision: values.decision }; break;
-      case 'contact_disposition': payload = { contact_id: values.contact, disposition: values.disposition }; break;
-      case 'create_campaign': payload = values; break;
-      case 'add_campaign_member': payload = { campaign_id: values.campaign, contact_id: values.contact }; break;
-      case 'create_draft': payload = { membership_id: values.membership, content: { body: values.body } }; break;
-      case 'draft_approval': payload = { draft_id: values.draft, decision: values.decision }; break;
-      case 'create_attempt': payload = { membership_id: selectedDraft?.membershipId, draft_id: values.draft }; break;
-      case 'attempt_approval': payload = { attempt_id: values.attempt, decision: values.decision }; break;
-      case 'manual_execution': payload = { attempt_id: values.attempt, outcome_note: values.outcome_note }; break;
-      default: return;
+      const isCampaign = kind === 'Campaigns';
+      const pageCursor = reset ? null : (cursor ?? (isCampaign ? campaignCursor : accountCursor));
+      const url = `/api/crm/workspace?directory=${isCampaign ? 'campaigns' : 'accounts'}&q=${encodeURIComponent(query)}&limit=25${pageCursor ? `&cursor=${encodeURIComponent(pageCursor)}` : ''}`;
+      const result = await responseJson(await fetch(url, { cache: 'no-store' }));
+      if (sequence !== directorySequence.current) return;
+      if (isCampaign) {
+        setCampaigns((previous) => reset ? result.campaigns : [...previous, ...result.campaigns]);
+        setCampaignCursor(result.nextCursor);
+      } else {
+        setAccounts((previous) => reset ? result.accounts : [...previous, ...result.accounts]);
+        setAccountCursor(result.nextCursor);
+      }
+      setMessage('');
+    } catch (error) {
+      if (sequence === directorySequence.current) setMessage(error.message);
+    } finally {
+      if (sequence === directorySequence.current) setBusy(false);
     }
-    if (Object.values(payload).some((value) => value === undefined)) { setMessage('That record is no longer available. Refresh and choose it again.'); return; }
-    try {
-      const response = await fetch('/api/crm/workspace', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action, payload }) });
-      const json = await response.json();
-      setMessage(response.ok ? `${ACTIONS[action].label} recorded.` : json.error || 'CRM command could not be completed');
-      if (response.ok) { setAction(''); load(); }
-    } catch { setMessage('CRM command could not be completed'); }
-  };
+  }
 
-  const activity = data.activity.map((event) => formatActivity(event, choices));
-  return <main className="crm-equal-admin"><header><p className="member-kicker">Plinko CRM · shared operator workspace</p><h1>Manual campaign workflow</h1><p>Choose people and records by name, follow the review stages, and record work as it happens. <strong>Manual outreach only:</strong> this portal never sends through a provider, dialer, or LinkedIn automation.</p></header>
-    <section className="crm-governance-banner"><strong>Governed workflow</strong><span>Reviews progress in order. The server records every decision and rejects invalid transitions.</span></section>
-    <nav aria-label="CRM views">{['Accounts', 'Campaigns', 'People', 'Activity'].map((item) => <button key={item} className={tab === item ? 'is-active' : ''} onClick={() => { setTab(item); setAction(''); }}>{item}</button>)}</nav>
-    {ACTIONS_BY_TAB[tab] && <section className="crm-actions"><div className="crm-section-heading"><p className="member-kicker">{tab}</p><h2>What do you need to do?</h2></div><div>{ACTIONS_BY_TAB[tab].map((name) => <button key={name} onClick={() => setAction(name)}>{ACTIONS[name].label}</button>)}</div></section>}
-    {action && <ActionForm action={action} choices={choices} onCancel={() => setAction('')} onSubmit={submit} />}
-    {tab === 'Accounts' && <section className="crm-record-grid">{data.accounts.length ? data.accounts.map((account) => <article className="crm-record-card" key={account.id}><p className="member-kicker">{account.source || 'Account'}</p><h3>{account.displayName || account.display_name || account.externalReference || account.external_reference || 'Unnamed account'}</h3><GateSummary account={account} /></article>) : <p className="workspace-empty">No accounts yet. Add an account to start the governed workflow.</p>}</section>}
-    {tab === 'People' && <section className="crm-record-grid">{data.contacts.length ? data.contacts.map((contact) => <article className="crm-record-card" key={contact.id}><p className="member-kicker">{contact.account_name || 'Account not listed'}</p><h3>{contact.full_name || 'Unnamed contact'}</h3><p>{[contact.title, contact.email, contact.phone].filter(Boolean).join(' · ') || 'No contact details recorded'}</p><span className="crm-stage-chip">{stageLabel(contact.contact_approval)} · {stageLabel(contact.disposition)}</span></article>) : <p className="workspace-empty">No contacts yet. Choose an account by name to add one.</p>}</section>}
-    {tab === 'Campaigns' && <section className="crm-record-grid">{data.campaigns.length ? data.campaigns.map((campaign) => <article className="crm-record-card" key={campaign.id}><p className="member-kicker">{campaign.channel || 'Manual channel'}</p><h3>{campaign.name || 'Untitled campaign'}</h3><p>{campaign.purpose || 'No purpose recorded'}</p><span className="crm-stage-chip">{stageLabel(campaign.status)} · {campaign.member_count || 0} people</span></article>) : <p className="workspace-empty">No campaigns yet. Create one, then add a person by name.</p>}<p className="crm-workflow-hint">After adding a person, refreshes make the campaign-and-contact choice available for a draft. Drafts and manual outreach are selected by their campaign and contact, never by an ID.</p></section>}
-    {tab === 'Activity' && <section className="crm-activity-panel"><h2>Shared activity</h2>{activity.length ? <ol className="crm-activity-list">{activity.map((event, index) => <li key={`${event.title}-${event.timestamp}-${index}`}><strong>{event.title}</strong><span>{event.context}</span>{event.timestamp && <small>{new Date(event.timestamp).toLocaleString()}</small>}</li>)}</ol> : <p className="workspace-empty">No shared activity yet.</p>}</section>}
-    <p className="crm-status" role="status">{message}</p>
+  useEffect(() => {
+    const timer = setTimeout(() => loadDirectory({ reset: true, kind: view, query: search }), 250);
+    return () => {
+      clearTimeout(timer);
+      directorySequence.current += 1;
+    };
+  }, [search, view]);
+
+  async function command(action, payload, { preserveDetail = false } = {}) {
+    setBusy(true);
+    try {
+      const result = await responseJson(await fetch('/api/crm/workspace', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action, payload }),
+      }));
+      if (action === 'create_campaign') {
+        setNewCampaign(false);
+        setView('Campaigns');
+        await loadDirectory({ reset: true, kind: 'Campaigns', query: '' });
+        setMessage('Campaign created. Add a person to begin work.');
+        return result;
+      }
+      if (!preserveDetail) setDetail(result);
+      setMessage('Saved.');
+      return result;
+    } catch (error) {
+      setMessage(error.message);
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function open(key, type) {
+    const sequence = ++detailSequence.current;
+    setSelectedKey(key);
+    setDetail(null);
+    setTab('Overview');
+    const result = await command(type === 'campaign' ? 'campaign_workspace' : 'account_workspace', type === 'campaign' ? { campaignKey: key } : { accountKey: key }, { preserveDetail: true });
+    if (sequence === detailSequence.current && result) setDetail(result);
+  }
+
+  const records = view === 'Accounts' ? accounts : campaigns;
+  const cursor = view === 'Accounts' ? accountCursor : campaignCursor;
+  const account = detail?.account;
+  const campaign = detail?.campaign;
+
+  return <main className="crm-equal-admin">
+    <header>
+      <p className="member-kicker">Plinko CRM · shared workspace</p>
+      <h1>{campaign?.name || account?.name || view}</h1>
+      <p>Work from accounts, people, tasks, activity, and campaigns.</p>
+    </header>
+    <nav aria-label="CRM views">
+      {['Accounts', 'Campaigns'].map((name) => <button type="button" key={name} className={view === name ? 'is-active' : ''} onClick={() => { setView(name); setDetail(null); }}>{name}</button>)}
+    </nav>
+
+    {!detail && <section className="crm-directory">
+      <div className="crm-directory-heading">
+        <h2>{view === 'Accounts' ? 'Account directory' : 'Campaign directory'}</h2>
+        <label className="crm-search">{view === 'Accounts' ? 'Search accounts' : 'Search campaigns'}<input type="search" value={search} onChange={(event) => setSearch(event.target.value)} /></label>
+        {view === 'Campaigns' && <button type="button" onClick={() => setNewCampaign((showing) => !showing)}>New campaign</button>}
+      </div>
+      {newCampaign && <CampaignForm busy={busy} onSubmit={(payload) => command('create_campaign', payload)} />}
+      <div className="workspace-table-wrap"><table className="workspace-table"><thead><tr><th>{view === 'Accounts' ? 'Account' : 'Campaign'}</th><th>Status</th><th>{view === 'Accounts' ? 'Next action' : 'People'}</th><th>Updated</th></tr></thead><tbody>
+        {records.map((record) => <tr key={record.key}><td><button type="button" className="workspace-row-button" onClick={() => open(record.key, view === 'Accounts' ? 'account' : 'campaign')}><strong>{record.name}</strong><span>Open {view === 'Accounts' ? 'account' : 'campaign'}</span></button></td><td><span className="crm-stage-chip">{label(record.status)}</span></td><td>{view === 'Accounts' ? record.nextAction : record.members}</td><td>{formatDate(record.updatedAt)}</td></tr>)}
+      </tbody></table></div>
+      {cursor && <button type="button" className="crm-load-more" disabled={busy} onClick={() => loadDirectory({ reset: false })}>{busy ? 'Loading…' : 'Load more'}</button>}
+    </section>}
+
+    {account && <AccountDetail detail={detail} accountKey={selectedKey} tab={tab} setTab={setTab} command={command} busy={busy} />}
+    {campaign && <CampaignDetail detail={detail} campaignKey={selectedKey} tab={tab} setTab={setTab} command={command} busy={busy} />}
+    {message && <p className="crm-status" role="status">{message}</p>}
   </main>;
+}
+
+function SectionButtons({ tab, setTab, names }) {
+  return <div className="crm-tabs" aria-label="Workspace sections">{names.map((name) => <button type="button" aria-pressed={tab === name} className={tab === name ? 'is-active' : ''} key={name} onClick={() => setTab(name)}>{name}</button>)}</div>;
+}
+
+function CampaignForm({ busy, onSubmit }) {
+  return <form className="crm-composer" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); onSubmit({ name: form.get('name'), channel: form.get('channel'), purpose: form.get('purpose') }); }}>
+    <label>Name<input name="name" required maxLength="240" /></label><label>Channel<select name="channel"><option value="email">Email</option><option value="call">Call</option><option value="linkedin">LinkedIn</option></select></label><label>Purpose<input name="purpose" maxLength="1000" /></label><button disabled={busy}>Create campaign</button>
+  </form>;
+}
+
+function AccountDetail({ detail, accountKey, tab, setTab, command, busy }) {
+  return <section className="crm-account-details"><header className="crm-account-header"><div><p className="member-kicker">Account</p><h2>{detail.account.name}</h2><span className="crm-stage-chip">{label(detail.account.status)}</span></div><div className="crm-next-action"><span>Next step</span><strong>{detail.nextAction?.label || 'No follow-up scheduled'}</strong><small>{detail.nextAction?.owner || 'Unassigned'} · {formatDate(detail.nextAction?.dueAt, 'No due date')}</small></div></header>
+    <SectionButtons tab={tab} setTab={setTab} names={['Overview', 'People', 'Activity']} />
+    {tab === 'Overview' && <section className="crm-section"><h3>Open tasks</h3><ul className="crm-task-list">{detail.tasks.filter((task) => task.status === 'open').map((task) => <li key={task.key}><span><strong>{task.title}</strong><small>{formatDate(task.dueAt)} · {task.owner || 'Unassigned'}</small></span><button type="button" disabled={busy} onClick={() => command('complete_task', { accountKey, taskKey: task.key })}>Complete task</button></li>)}</ul><form className="crm-composer" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); command('create_task', { accountKey, title: form.get('title'), dueAt: asIsoDate(form.get('dueAt')) }); }}><label>New task<input name="title" required maxLength="240" /></label><label>Due date<input name="dueAt" type="datetime-local" /></label><button disabled={busy}>Create task</button></form><details className="crm-record-details"><summary>Record details</summary><p>Source: {detail.recordDetails.source || 'Unavailable'}</p><p>Account status decision: {label(detail.recordDetails.reviewStatus)}</p>{detail.recordDetails.reviewStatus !== 'approved' && <p><button type="button" disabled={busy} onClick={() => command('account_approval', { accountKey, decision: 'approved' })}>Approve account</button> <button type="button" disabled={busy} onClick={() => command('account_approval', { accountKey, decision: 'rejected' })}>Reject account</button></p>}</details></section>}
+    {tab === 'People' && <People detail={detail} accountKey={accountKey} command={command} busy={busy} />}
+    {tab === 'Activity' && <section className="crm-section"><h3>Activity</h3><ul>{detail.activities.map((activity, index) => <li key={`${activity.occurredAt}-${index}`}><strong>{label(activity.type)}</strong> · {formatDate(activity.occurredAt)}</li>)}</ul><form className="crm-composer" onSubmit={(event) => { event.preventDefault(); command('create_note', { accountKey, note: new FormData(event.currentTarget).get('note') }); }}><label>Add note<textarea name="note" required maxLength="4000" /></label><button disabled={busy}>Add note</button></form></section>}
+  </section>;
+}
+
+function People({ detail, accountKey, command, busy }) {
+  return <section className="crm-section"><h3>People</h3><table className="workspace-table"><thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Actions</th></tr></thead><tbody>{detail.contacts.map((person) => <tr key={person.key}><td><strong>{person.name}</strong><br />{person.title}</td><td>{person.email}</td><td>{label(person.status)}</td><td>{person.approval !== 'approved' && <><button type="button" disabled={busy} onClick={() => command('contact_approval', { accountKey, contactKey: person.key, decision: 'approved' })}>Approve contact</button> <button type="button" disabled={busy} onClick={() => command('contact_approval', { accountKey, contactKey: person.key, decision: 'rejected' })}>Reject contact</button> </>}<button type="button" disabled={busy} onClick={() => command('contact_disposition', { accountKey, contactKey: person.key, disposition: 'active' })}>Mark active</button> <button type="button" disabled={busy} onClick={() => command('contact_disposition', { accountKey, contactKey: person.key, disposition: 'do_not_contact' })}>Do not contact</button></td></tr>)}</tbody></table><form className="crm-composer" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); command('create_contact', { accountKey, fullName: form.get('fullName'), title: form.get('title'), email: form.get('email') }); }}><h3>Add person</h3><label>Name<input name="fullName" required maxLength="240" /></label><label>Role<input name="title" maxLength="240" /></label><label>Email<input name="email" type="email" maxLength="320" /></label><button disabled={busy}>Add person</button></form></section>;
+}
+
+function CampaignDetail({ detail, campaignKey, tab, setTab, command, busy }) {
+  const [accounts, setAccounts] = useState([]);
+  const [eligiblePeople, setEligiblePeople] = useState([]);
+  const [accountKey, setAccountKey] = useState('');
+  const requestSequence = useRef(0);
+
+  useEffect(() => {
+    const sequence = ++requestSequence.current;
+    fetch('/api/crm/workspace?directory=accounts&limit=50', { cache: 'no-store' }).then(responseJson).then((result) => { if (sequence === requestSequence.current) setAccounts(result.accounts || []); }).catch(() => {});
+    return () => { requestSequence.current += 1; };
+  }, [campaignKey]);
+
+  async function chooseAccount(key) {
+    setAccountKey(key);
+    setEligiblePeople([]);
+    const sequence = ++requestSequence.current;
+    const workspace = await command('account_workspace', { accountKey: key }, { preserveDetail: true });
+    if (sequence === requestSequence.current && workspace) setEligiblePeople(workspace.contacts || []);
+  }
+
+  const campaign = detail.campaign;
+  return <section className="crm-account-details"><header className="crm-account-header"><div><p className="member-kicker">Campaign</p><h2>{campaign.name}</h2><span className="crm-stage-chip">{label(campaign.status)}</span></div><div>{campaign.channel} · {campaign.purpose || 'No purpose recorded'}</div></header>
+    <SectionButtons tab={tab} setTab={setTab} names={['Overview', 'People', 'Drafts', 'Activity']} />
+    {tab === 'Overview' && <section className="crm-section"><h3>Campaign overview</h3><p>{detail.members.length} people in this campaign.</p></section>}
+    {tab === 'People' && <section className="crm-section"><h3>People</h3><ul>{detail.members.map((member) => <li key={member.key}><strong>{member.person.name}</strong> · {member.accountName} · {label(member.status)}<DraftForm busy={busy} onSubmit={(body) => command('create_draft', { campaignKey, membershipKey: member.key, body })} /></li>)}</ul><h3>Add person</h3><p>Select an account, then add an eligible person from that account to this campaign.</p><label>Account<select value={accountKey} onChange={(event) => chooseAccount(event.target.value)}><option value="">Choose an account</option>{accounts.map((account) => <option key={account.key} value={account.key}>{account.name}</option>)}</select></label>{accountKey && <ul>{eligiblePeople.map((person) => <li key={person.key}>{person.name} {person.email ? `· ${person.email}` : ''} <button type="button" disabled={busy} onClick={() => command('add_campaign_member', { campaignKey, accountKey, contactKey: person.key })}>Add to campaign</button></li>)}</ul>}</section>}
+    {tab === 'Drafts' && <section className="crm-section"><h3>Drafts and manual attempts</h3>{detail.members.flatMap((member) => member.drafts.map((draft) => <article key={draft.key}><strong>{member.person.name} · revision {draft.revision}</strong><p>{draft.content.body || 'Draft content'}</p><p>{label(draft.approval)}</p><button type="button" disabled={busy} onClick={() => command('draft_approval', { campaignKey, draftKey: draft.key, decision: 'approved' })}>Approve draft</button> <button type="button" disabled={busy} onClick={() => command('draft_approval', { campaignKey, draftKey: draft.key, decision: 'rejected' })}>Reject draft</button> <button type="button" disabled={busy} onClick={() => command('create_attempt', { campaignKey, membershipKey: member.key, draftKey: draft.key })}>Create attempt</button></article>))}{detail.members.flatMap((member) => member.attempts.map((attempt) => <article key={attempt.key}><strong>{member.person.name} · {label(attempt.status)}</strong><p>{label(attempt.approval)}</p><button type="button" disabled={busy} onClick={() => command('attempt_approval', { campaignKey, attemptKey: attempt.key, decision: 'approved' })}>Approve attempt</button> <button type="button" disabled={busy} onClick={() => command('attempt_approval', { campaignKey, attemptKey: attempt.key, decision: 'rejected' })}>Reject attempt</button><form className="crm-composer" onSubmit={(event) => { event.preventDefault(); command('manual_execution', { campaignKey, attemptKey: attempt.key, outcomeNote: new FormData(event.currentTarget).get('outcomeNote') }); }}><label>Manual outcome<textarea name="outcomeNote" required maxLength="4000" /></label><button disabled={busy}>Record manual outcome</button></form></article>))}</section>}
+    {tab === 'Activity' && <section className="crm-section"><h3>Activity</h3><ul>{detail.activities.map((activity, index) => <li key={`${activity.occurredAt}-${index}`}><strong>{label(activity.type)}</strong> · {formatDate(activity.occurredAt)}</li>)}</ul></section>}
+  </section>;
+}
+
+function DraftForm({ busy, onSubmit }) {
+  return <form className="crm-composer" onSubmit={(event) => { event.preventDefault(); onSubmit(new FormData(event.currentTarget).get('body')); }}><label>Draft text<textarea name="body" required maxLength="12000" /></label><button disabled={busy}>Create draft</button></form>;
 }
