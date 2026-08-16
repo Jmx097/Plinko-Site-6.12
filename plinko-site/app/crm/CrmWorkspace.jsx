@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { TAX_FIRM_WEEKLY_CALL_ICP } from '../../lib/tax-firm-weekly-call-icp.mjs';
 
 function formatDate(value, fallback = '—') {
   if (!value) return fallback;
@@ -127,6 +128,7 @@ export default function CrmWorkspace() {
         {view === 'Campaigns' && <button type="button" onClick={() => setNewCampaign((showing) => !showing)}>New campaign</button>}
       </div>
       {newCampaign && <CampaignForm busy={busy} onSubmit={(payload) => command('create_campaign', payload)} />}
+      {view === 'Campaigns' && <IcpBrief />}
       <div className="workspace-table-wrap"><table className="workspace-table"><thead><tr><th>{view === 'Accounts' ? 'Account' : 'Campaign'}</th><th>Status</th><th>{view === 'Accounts' ? 'Next action' : 'People'}</th><th>Updated</th></tr></thead><tbody>
         {records.map((record) => <tr key={record.key}><td><button type="button" className="workspace-row-button" onClick={() => open(record.key, view === 'Accounts' ? 'account' : 'campaign')}><strong>{record.name}</strong><span>Open {view === 'Accounts' ? 'account' : 'campaign'}</span></button></td><td><span className="crm-stage-chip">{label(record.status)}</span></td><td>{view === 'Accounts' ? record.nextAction : record.members}</td><td>{formatDate(record.updatedAt)}</td></tr>)}
       </tbody></table></div>
@@ -145,8 +147,12 @@ function SectionButtons({ tab, setTab, names }) {
 
 function CampaignForm({ busy, onSubmit }) {
   return <form className="crm-composer" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); onSubmit({ name: form.get('name'), channel: form.get('channel'), purpose: form.get('purpose') }); }}>
-    <label>Name<input name="name" required maxLength="240" /></label><label>Channel<select name="channel"><option value="email">Email</option><option value="call">Call</option><option value="linkedin">LinkedIn</option></select></label><label>Purpose<input name="purpose" maxLength="1000" /></label><button disabled={busy}>Create campaign</button>
+    <label>Name<input name="name" required maxLength="240" defaultValue={TAX_FIRM_WEEKLY_CALL_ICP.name} /></label><label>Channel<select name="channel" defaultValue={TAX_FIRM_WEEKLY_CALL_ICP.channel}><option value="email">Email</option><option value="call">Call</option><option value="linkedin">LinkedIn</option></select></label><label>Purpose<input name="purpose" maxLength="1000" defaultValue="Weekly manual call queue" /></label><button disabled={busy}>Create campaign</button>
   </form>;
+}
+
+function IcpBrief() {
+  return <details className="crm-record-details" open><summary>Weekly call focus</summary><p><strong>{TAX_FIRM_WEEKLY_CALL_ICP.employeeCount.label}</strong> · <strong>{TAX_FIRM_WEEKLY_CALL_ICP.revenueCapacityHypothesis.label}</strong></p><p>{TAX_FIRM_WEEKLY_CALL_ICP.evidenceRequirement}</p><ul>{TAX_FIRM_WEEKLY_CALL_ICP.workflow.map((step) => <li key={step}>{step}</li>)}</ul></details>;
 }
 
 function AccountDetail({ detail, accountKey, tab, setTab, command, busy }) {
