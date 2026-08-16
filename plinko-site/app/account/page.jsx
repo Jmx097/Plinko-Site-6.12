@@ -3,6 +3,7 @@ import { auth, currentUser } from '@clerk/nextjs/server';
 import { getMemberOverview } from '../../lib/member-activation.mjs';
 import { getMemberDashboard } from '../../lib/member-dashboard.mjs';
 import { isAdminEmail } from '../../lib/plinko-pocket-admin.mjs';
+import { requireCrmEqualAdminEmail } from '../../lib/crm-equal-admin.mjs';
 import { submitSupportRequest } from './actions';
 
 export const dynamic = 'force-dynamic';
@@ -29,6 +30,8 @@ export default async function AccountPage() {
   const referralUrl = `${process.env.PLINKO_APP_URL}/sign-up?ref=${encodeURIComponent(overview.referralCode)}`;
   const availableEarnings = Object.entries(overview.availableByCurrency);
   const modules = dashboard.modules.map((key) => moduleCopy[key]).filter(Boolean);
+  let crmAdmin = false;
+  try { requireCrmEqualAdminEmail(user); crmAdmin = true; } catch { /* Non-CRM members keep the standard Pocket home. */ }
 
   return (
     <main className="member-page">
@@ -36,7 +39,8 @@ export default async function AccountPage() {
         <p className="member-kicker">Plinko Pocket · member home</p>
         <h1 id="account-title">Welcome, {firstName}</h1>
         {email ? <p className="member-email">{email}</p> : null}
-        {email && isAdminEmail(email) ? <p className="member-admin-link"><a href="/admin">Open staff control plane →</a></p> : null}
+        {crmAdmin ? <p className="member-admin-link"><a href="/crm">Open campaign CRM →</a></p> : null}
+        {email && isAdminEmail(email) ? <p className="member-admin-link"><a href="/admin">Open Pocket staff control plane →</a></p> : null}
 
         <div className="member-status" aria-live="polite">
           <strong>{overview.activatedNow ? 'Your referral space is ready.' : 'Your referral space is active.'}</strong>

@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 
 import { getAdminControlPlane } from '../../lib/member-dashboard.mjs';
 import { requireAdminEmail } from '../../lib/plinko-pocket-admin.mjs';
+import { requireCrmEqualAdminEmail } from '../../lib/crm-equal-admin.mjs';
 import { getWaitlistEntries } from '../../lib/waitlist.mjs';
 import { updateGrantForMember, updateSupportStatus, updateWaitlistStatus } from './actions';
 
@@ -21,6 +22,8 @@ export default async function AdminPage() {
     redirect('/account');
   }
   const [controlPlane, waitlist] = await Promise.all([getAdminControlPlane(), getWaitlistEntries()]);
+  let crmAdmin = false;
+  try { requireCrmEqualAdminEmail(user); crmAdmin = true; } catch { /* CRM access is separately authorized. */ }
   const members = new Set([
     ...controlPlane.memberProfiles.map((profile) => profile.user_id),
     ...controlPlane.supportRequests.map((request) => request.user_id),
@@ -34,6 +37,7 @@ export default async function AdminPage() {
         <p className="member-kicker">Plinko Pocket · staff only</p>
         <h1 id="admin-title">Control plane</h1>
         <p className="member-email">Signed in as {staffEmail}</p>
+        {crmAdmin ? <p className="member-admin-link"><a href="/crm">Open campaign CRM →</a></p> : null}
         <p className="admin-intro">Grant only the modules a member needs and triage support requests. All writes are verified server-side against the staff allowlist.</p>
 
         <section aria-labelledby="waitlist-title">

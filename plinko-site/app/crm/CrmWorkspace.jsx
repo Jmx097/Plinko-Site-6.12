@@ -116,6 +116,7 @@ export default function CrmWorkspace() {
       <p className="member-kicker">Plinko CRM · shared workspace</p>
       <h1>{campaign?.name || account?.name || view}</h1>
       <p>Work from accounts, people, tasks, activity, and campaigns.</p>
+      <p className="member-admin-link"><a href="/account">Back to account home →</a></p>
     </header>
     <nav aria-label="CRM views">
       {['Accounts', 'Campaigns'].map((name) => <button type="button" key={name} className={view === name ? 'is-active' : ''} onClick={() => { setView(name); setDetail(null); }}>{name}</button>)}
