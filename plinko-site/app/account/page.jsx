@@ -23,15 +23,35 @@ export default async function AccountPage() {
   const user = await currentUser();
   if (!userId) throw new Error('Authenticated member session required');
 
-  const [overview, dashboard] = await Promise.all([getMemberOverview({ userId }), getMemberDashboard({ userId })]);
   const firstName = user?.firstName || 'Member';
   const email = user?.emailAddresses.find((address) => address.id === user.primaryEmailAddressId)?.emailAddress
     || user?.emailAddresses[0]?.emailAddress;
+  let crmAdmin = false;
+  try { requireCrmEqualAdminEmail(user); crmAdmin = true; } catch { /* Non-CRM members keep the standard Pocket home. */ }
+
+  // The CRM is an independent operating surface. Its authorized operators must
+  // not be blocked by an outage in the separate Pocket/referral Core.
+  if (crmAdmin) {
+    return (
+      <main className="member-page">
+        <section className="member-panel member-dashboard" aria-labelledby="account-title">
+          <p className="member-kicker">Plinko CRM · operator home</p>
+          <h1 id="account-title">Welcome, {firstName}</h1>
+          {email ? <p className="member-email">{email}</p> : null}
+          <div className="member-status">
+            <strong>Your shared campaign workspace is ready.</strong>
+            <span>Open Accounts to work the weekly queue, then use Campaigns to record manual outcomes and follow-ups.</span>
+          </div>
+          <p className="member-admin-link"><a href="/crm">Open campaign CRM →</a></p>
+        </section>
+      </main>
+    );
+  }
+
+  const [overview, dashboard] = await Promise.all([getMemberOverview({ userId }), getMemberDashboard({ userId })]);
   const referralUrl = `${process.env.PLINKO_APP_URL}/sign-up?ref=${encodeURIComponent(overview.referralCode)}`;
   const availableEarnings = Object.entries(overview.availableByCurrency);
   const modules = dashboard.modules.map((key) => moduleCopy[key]).filter(Boolean);
-  let crmAdmin = false;
-  try { requireCrmEqualAdminEmail(user); crmAdmin = true; } catch { /* Non-CRM members keep the standard Pocket home. */ }
 
   return (
     <main className="member-page">
