@@ -3,202 +3,540 @@
 import { useEffect, useRef, useState } from 'react';
 import { TAX_FIRM_WEEKLY_CALL_ICP } from '../../lib/tax-firm-weekly-call-icp.mjs';
 
+const MODULES = ['My Work', 'Accounts', 'Contacts', 'Leads', 'Opportunities', 'Tasks', 'Calendar', 'Calls', 'Meetings', 'Emails', 'Email Templates', 'Documents', 'Knowledge Base', 'Campaigns', 'Target Lists', 'Activities', 'Reports', 'Dashboards', 'Administration'];
+const ACCOUNT_TABS = ['Overview', 'Activity', 'People', 'Tasks', 'Campaigns', 'Opportunities', 'Details'];
+const CAMPAIGN_TABS = ['Overview', 'Target list', 'Draft queue', 'Manual attempts', 'Activity'];
+const CONTACT_TABS = ['Overview', 'Activities', 'Campaign memberships'];
+const LEAD_TABS = ['Overview', 'Qualification', 'Associations', 'Activities', 'Handoff'];
+const OPPORTUNITY_TABS = ['Overview', 'Associations', 'Activity', 'Pipeline context'];
+const EMAIL_TABS = ['Overview', 'Preview', 'Relationships', 'Audit context'];
+const MODULE_SLUGS = { 'my-work': 'My Work', accounts: 'Accounts', contacts: 'Contacts', leads: 'Leads', opportunities: 'Opportunities', tasks: 'Tasks', calendar: 'Calendar', calls: 'Calls', meetings: 'Meetings', emails: 'Emails', 'email-templates': 'Email Templates', documents: 'Documents', 'knowledge-base': 'Knowledge Base', campaigns: 'Campaigns', 'target-lists': 'Target Lists', activities: 'Activities', reports: 'Reports', dashboards: 'Dashboards', administration: 'Administration' };
+const moduleSlug = (module) => Object.entries(MODULE_SLUGS).find(([, value]) => value === module)?.[0] || 'my-work';
+
+
 function formatDate(value, fallback = '—') {
   if (!value) return fallback;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? fallback : date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
-
-function label(value) {
-  return value ? String(value).replaceAll('_', ' ') : 'Needs review';
-}
-
-async function responseJson(response) {
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error || 'CRM unavailable');
-  return body;
-}
-
-function asIsoDate(value) {
-  if (!value) return null;
+function shortDate(value, fallback = '—') {
+  if (!value) return fallback;
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  return Number.isNaN(date.getTime()) ? fallback : date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
+function label(value, fallback = 'Needs review') { return value ? String(value).replaceAll('_', ' ') : fallback; }
+function asIsoDate(value) { const date = value ? new Date(value) : null; return date && !Number.isNaN(date.getTime()) ? date.toISOString() : null; }
+async function responseJson(response) { const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.error || 'CRM is temporarily unavailable'); return body; }
+
+function EmptyState({ title, children }) { return <section className="crm-empty"><h2>{title}</h2><p>{children}</p></section>; }
+function StatusChip({ children, tone = 'neutral' }) { return <span className={`crm-chip crm-chip-${tone}`}>{children}</span>; }
+function ModuleNav({ active, onChange }) { return <nav className="crm-app-nav" aria-label="CRM modules">{MODULES.map((module) => <button type="button" className={module === active ? 'is-active' : ''} key={module} onClick={() => onChange(module)}>{module}</button>)}</nav>; }
+function Panel({ title, action, children, className = '' }) { return <section className={`crm-panel ${className}`}><header className="crm-panel-header"><h2>{title}</h2>{action}</header>{children}</section>; }
+function LoadingState({ label = 'Loading workspace…' }) { return <section className="crm-state crm-state-loading" aria-live="polite"><span className="crm-loading-mark" aria-hidden="true" /><p>{label}</p></section>; }
+function ErrorState({ message, retry }) { return <section className="crm-state crm-state-error" role="alert"><strong>Could not load this workspace view.</strong><p>{message}</p>{retry && <button className="crm-text-button" type="button" onClick={retry}>Try again</button>}</section>; }
+function SavedViews({ views, active, onChange }) { return <nav className="crm-saved-views" aria-label="Saved list views">{views.map((view) => <button className={view === active ? 'is-active' : ''} type="button" key={view} onClick={() => onChange(view)}>{view}</button>)}</nav>; }
+function ListToolbar({ count, selectedCount, sort, setSort, onClearSelection }) { return <div className="crm-list-toolbar"><span>{count} shown</span><label>Sort <select value={sort} onChange={(event) => setSort(event.target.value)}><option value="updated">Last updated</option><option value="name">Name</option><option value="status">Status</option></select></label>{selectedCount > 0 && <div className="crm-bulk-selection" role="status"><strong>{selectedCount} selected</strong><span>Bulk lifecycle changes are unavailable.</span><button className="crm-text-button" type="button" onClick={onClearSelection}>Clear</button></div>}</div>; }
+function Pagination({ page, total, onChange }) { if (total < 2) return null; return <nav className="crm-pagination" aria-label="List pagination"><button type="button" disabled={page === 0} onClick={() => onChange(page - 1)}>Previous</button><span>Page {page + 1} of {total}</span><button type="button" disabled={page >= total - 1} onClick={() => onChange(page + 1)}>Next</button></nav>; }
+function RecordActionMenu({ onUnavailable }) { const [open, setOpen] = useState(false); return <div className="crm-record-actions"><button className="crm-text-button" type="button" aria-expanded={open} onClick={() => setOpen(!open)}>Actions</button>{open && <div className="crm-action-menu"><button type="button" onClick={() => { navigator.clipboard?.writeText(window.location.href); setOpen(false); }}>Copy record link</button><button type="button" onClick={() => { onUnavailable(); setOpen(false); }}>Lifecycle actions unavailable</button></div>}</div>; }
+function ConfirmButton({ className = 'crm-text-button', label: buttonLabel, title, description, confirmLabel = buttonLabel, disabled, onConfirm }) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef(null);
+  const dialogRef = useRef(null);
+  const close = () => { setOpen(false); requestAnimationFrame(() => triggerRef.current?.focus()); };
+  useEffect(() => {
+    if (!open) return undefined;
+    const dialog = dialogRef.current;
+    const focusable = [...dialog.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')];
+    focusable[0]?.focus();
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') { event.preventDefault(); close(); return; }
+      if (event.key !== 'Tab' || !focusable.length) return;
+      const first = focusable[0]; const last = focusable.at(-1);
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [open]);
+  return <><button ref={triggerRef} className={className} type="button" disabled={disabled} onClick={() => setOpen(true)}>{buttonLabel}</button>{open && <div className="crm-modal-backdrop" role="presentation"><section ref={dialogRef} className="crm-confirm-modal" role="dialog" aria-modal="true" aria-label={title}><h2>{title}</h2><p>{description}</p><div className="crm-button-row"><button className="crm-text-button" type="button" onClick={close}>Cancel</button><button className={className} type="button" disabled={disabled} onClick={() => { close(); onConfirm(); }}>{confirmLabel}</button></div></section></div>}</>;
+}
+function routeFromLocation() {
+  const params = new URLSearchParams(window.location.search);
+  const module = MODULE_SLUGS[params.get('module')] || 'My Work';
+  const key = params.get('record');
+  const kind = key?.startsWith('account_') ? (module === 'Leads' ? 'lead' : module === 'Opportunities' ? 'opportunity' : 'account') : key?.startsWith('campaign_') ? (module === 'Target Lists' ? 'target_list' : 'campaign') : key?.startsWith('contact_') ? 'contact' : key?.startsWith('task_') ? 'task' : key?.startsWith('email_') ? 'email' : key?.startsWith('template_') ? 'template' : null;
+  const tabs = kind === 'account' ? ACCOUNT_TABS : kind === 'lead' ? LEAD_TABS : kind === 'opportunity' ? OPPORTUNITY_TABS : kind === 'campaign' || kind === 'target_list' ? CAMPAIGN_TABS : kind === 'email' || kind === 'template' ? EMAIL_TABS : CONTACT_TABS;
+  return { module, search: params.get('q') || '', selected: kind ? { kind, key } : null, tab: tabs.includes(params.get('tab')) ? params.get('tab') : 'Overview' };
+}
+function writeRoute({ module, search = '', selected = null, tab = null }, mode = 'push') {
+  const params = new URLSearchParams();
+  params.set('module', moduleSlug(module));
+  if (search) params.set('q', search);
+  if (selected?.key) params.set('record', selected.key);
+  if (selected?.key && tab) params.set('tab', tab);
+  const url = `${window.location.pathname}?${params.toString()}`;
+  window.history[mode === 'replace' ? 'replaceState' : 'pushState']({}, '', url);
+}
+
+function recordSearchEntries({ accounts, campaigns, contacts, tasks, emails, templates }) {
+  return [
+    ...accounts.map((item) => ({ ...item, kind: 'account', type: 'Accounts', searchText: [item.name, item.source, item.nextAction] })),
+    ...campaigns.map((item) => ({ ...item, kind: 'campaign', type: 'Campaigns', searchText: [item.name, item.purpose, item.channel] })),
+    ...contacts.map((item) => ({ ...item, kind: 'contact', type: 'Contacts', searchText: [item.name, item.title, item.accountName] })),
+    ...tasks.map((item) => ({ ...item, kind: 'task', type: 'Tasks', name: item.title, searchText: [item.title, item.accountName, item.owner] })),
+    ...emails.map((item) => ({ ...item, kind: 'email', type: 'Emails', name: item.recipientName, searchText: [item.recipientName, item.recipientEmail, item.accountName, item.campaignName] })),
+    ...templates.map((item) => ({ ...item, kind: 'template', type: 'Email Templates', searchText: [item.name, item.recipientName, item.campaignName] })),
+  ];
+}
+function GlobalSearch({ records, open, toggleFavorite, favorites }) {
+  const [query, setQuery] = useState('');
+  const [expanded, setExpanded] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const inputRef = useRef(null);
+  const normalized = query.trim().toLowerCase();
+  const matches = normalized ? records.filter((item) => item.searchText.filter(Boolean).join(' ').toLowerCase().includes(normalized)).slice(0, 12) : [];
+  const grouped = matches.reduce((groups, item) => ({ ...groups, [item.type]: [...(groups[item.type] || []), item] }), {});
+  const ordered = Object.values(grouped).flat();
+  const choose = (item) => { open(item.kind, item.key); setQuery(''); setExpanded(false); };
+  useEffect(() => {
+    const focusSearch = (event) => {
+      if (event.key === '/' && !event.metaKey && !event.ctrlKey && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) { event.preventDefault(); inputRef.current?.focus(); }
+    };
+    window.addEventListener('keydown', focusSearch);
+    return () => window.removeEventListener('keydown', focusSearch);
+  }, []);
+  return <div className="crm-global-search"><label><span>Global search <kbd>/</kbd></span><input ref={inputRef} type="search" value={query} onFocus={() => setExpanded(true)} onChange={(event) => { setQuery(event.target.value); setExpanded(true); setActiveIndex(0); }} onKeyDown={(event) => { if (event.key === 'Escape') { setExpanded(false); inputRef.current?.blur(); } if (event.key === 'ArrowDown' && ordered.length) { event.preventDefault(); setActiveIndex((index) => (index + 1) % ordered.length); } if (event.key === 'ArrowUp' && ordered.length) { event.preventDefault(); setActiveIndex((index) => (index - 1 + ordered.length) % ordered.length); } if (event.key === 'Enter' && ordered[activeIndex]) { event.preventDefault(); choose(ordered[activeIndex]); } }} placeholder="Search every CRM record" aria-expanded={expanded} aria-controls="crm-global-search-results" aria-activedescendant={ordered[activeIndex] ? `crm-search-${ordered[activeIndex].key}` : undefined} /></label>{expanded && <div id="crm-global-search-results" className="crm-global-search-results">{matches.length ? Object.entries(grouped).map(([type, items]) => <section className="crm-search-group" key={type}><h2>{type}</h2>{items.map((item) => { const index = ordered.indexOf(item); const isFavorite = favorites.has(item.key); return <div className={index === activeIndex ? 'is-active' : ''} id={`crm-search-${item.key}`} key={`${item.kind}-${item.key}`}><button type="button" onMouseEnter={() => setActiveIndex(index)} onClick={() => choose(item)}><span>{item.name}</span><small>{item.accountName || item.purpose || item.title || item.channel || item.type}</small></button><button className="crm-star-button" type="button" aria-label={`${isFavorite ? 'Remove' : 'Add'} ${item.name} ${isFavorite ? 'from' : 'to'} favorites`} aria-pressed={isFavorite} onClick={() => toggleFavorite(item)}>{isFavorite ? '★' : '☆'}</button></div>; })}</section>) : <p>{normalized ? 'No matching records in your authorized workspace.' : 'Search the authenticated CRM workspace.'}</p>}</div>}</div>;
+}
+function WorkspaceShortcuts({ favorites, recent, open, toggleFavorite }) { const [openMenu, setOpenMenu] = useState(null); const rows = openMenu === 'favorites' ? favorites : recent; return <div className="crm-workspace-shortcuts"><button type="button" className="crm-topbar-button" aria-expanded={openMenu === 'favorites'} onClick={() => setOpenMenu(openMenu === 'favorites' ? null : 'favorites')}>★ Favorites</button><button type="button" className="crm-topbar-button" aria-expanded={openMenu === 'recent'} onClick={() => setOpenMenu(openMenu === 'recent' ? null : 'recent')}>Recent</button>{openMenu && <div className="crm-topbar-menu crm-workspace-shortcut-menu">{rows.length ? rows.map((item) => <div key={`${item.kind}-${item.key}`}><button type="button" onClick={() => { open(item.kind, item.key); setOpenMenu(null); }}><strong>{item.name}</strong><small>{item.type}</small></button>{openMenu === 'favorites' && <button className="crm-star-button" type="button" aria-label={`Remove ${item.name} from favorites`} onClick={() => toggleFavorite(item)}>★</button>}</div>) : <p>{openMenu === 'favorites' ? 'No favorites in this authenticated workspace.' : 'No records opened in this workspace yet.'}</p>}</div>}</div>; }
+function QuickCreate({ onRoute }) { const [open, setOpen] = useState(false); return <div className="crm-quick-create"><button type="button" className="crm-topbar-button" aria-expanded={open} onClick={() => setOpen(!open)}>+ Create</button>{open && <div className="crm-topbar-menu"><button type="button" onClick={() => { onRoute('Accounts'); setOpen(false); }}>Account</button><button type="button" onClick={() => { onRoute('Campaigns'); setOpen(false); }}>Campaign</button><button type="button" onClick={() => { onRoute('Calendar'); setOpen(false); }}>Task</button><p>Each route keeps its existing, account-scoped and authorized create boundary.</p></div>}</div>; }
+function UserMenu() { const [open, setOpen] = useState(false); return <div className="crm-user-menu"><button type="button" className="crm-avatar-button" aria-expanded={open} onClick={() => setOpen(!open)}>PL<span className="sr-only">Open user menu</span></button>{open && <div className="crm-topbar-menu"><a href="/account">Account home</a><p>Shared CRM administrator</p></div>}</div>; }
 
 export default function CrmWorkspace() {
-  const [view, setView] = useState('Accounts');
+  const [module, setModule] = useState('My Work');
   const [accounts, setAccounts] = useState([]);
   const [campaigns, setCampaigns] = useState([]);
-  const [accountCursor, setAccountCursor] = useState(null);
-  const [campaignCursor, setCampaignCursor] = useState(null);
+  const [contacts, setContacts] = useState([]);
+  const [tasks, setTasks] = useState([]);
+  const [emails, setEmails] = useState([]);
+  const [templates, setTemplates] = useState([]);
   const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState(null);
   const [detail, setDetail] = useState(null);
-  const [selectedKey, setSelectedKey] = useState(null);
-  const [tab, setTab] = useState('Overview');
-  const [message, setMessage] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [newCampaign, setNewCampaign] = useState(false);
-  const directorySequence = useRef(0);
+  const [recordTab, setRecordTab] = useState('Activity');
+  const [pendingCount, setPendingCount] = useState(0);
+  const [notice, setNotice] = useState(null);
+  const [campaignCreateRequested, setCampaignCreateRequested] = useState(false);
+  const [homeDashboard, setHomeDashboard] = useState(null);
+  const [homeError, setHomeError] = useState('');
+  // These client-only preferences contain only opaque handles returned for
+  // this authenticated workspace and vanish when the session page closes.
+  const [favoriteRecords, setFavoriteRecords] = useState([]);
+  const [recentRecords, setRecentRecords] = useState([]);
+  const directorySequence = useRef({ accounts: 0, campaigns: 0, contacts: 0, tasks: 0, emails: 0, templates: 0 });
   const detailSequence = useRef(0);
+  const selectedRef = useRef(null);
+  const busy = pendingCount > 0;
+  const begin = () => setPendingCount((count) => count + 1);
+  const finish = () => setPendingCount((count) => Math.max(0, count - 1));
 
-  async function loadDirectory({ reset = true, kind = view, query = search, cursor } = {}) {
-    const sequence = ++directorySequence.current;
-    setBusy(true);
+  useEffect(() => { selectedRef.current = selected; }, [selected]);
+
+  async function loadDirectory(kind, query = '') {
+    const directory = kind === 'campaigns' ? 'campaigns' : kind === 'contacts' ? 'contacts' : kind === 'tasks' ? 'tasks' : kind === 'emails' ? 'emails' : kind === 'templates' ? 'templates' : 'accounts';
+    const sequence = ++directorySequence.current[directory];
+    begin();
     try {
-      const isCampaign = kind === 'Campaigns';
-      const pageCursor = reset ? null : (cursor ?? (isCampaign ? campaignCursor : accountCursor));
-      const url = `/api/crm/workspace?directory=${isCampaign ? 'campaigns' : 'accounts'}&q=${encodeURIComponent(query)}&limit=25${pageCursor ? `&cursor=${encodeURIComponent(pageCursor)}` : ''}`;
-      const result = await responseJson(await fetch(url, { cache: 'no-store' }));
-      if (sequence !== directorySequence.current) return;
-      if (isCampaign) {
-        setCampaigns((previous) => reset ? result.campaigns : [...previous, ...result.campaigns]);
-        setCampaignCursor(result.nextCursor);
-      } else {
-        setAccounts((previous) => reset ? result.accounts : [...previous, ...result.accounts]);
-        setAccountCursor(result.nextCursor);
-      }
-      setMessage('');
+      const result = await responseJson(await fetch(`/api/crm/workspace?directory=${directory}&q=${encodeURIComponent(query)}&limit=50`, { cache: 'no-store' }));
+      if (sequence !== directorySequence.current[directory]) return;
+      if (directory === 'campaigns') setCampaigns(result.campaigns || []); else if (directory === 'contacts') setContacts(result.contacts || []); else if (directory === 'tasks') setTasks(result.tasks || []); else if (directory === 'emails') setEmails(result.emails || []); else if (directory === 'templates') setTemplates(result.templates || []); else setAccounts(result.accounts || []);
     } catch (error) {
-      if (sequence === directorySequence.current) setMessage(error.message);
-    } finally {
-      if (sequence === directorySequence.current) setBusy(false);
-    }
+      if (sequence === directorySequence.current[directory]) setNotice({ kind: 'error', text: `Could not load ${kind}. ${error.message}` });
+    } finally { finish(); }
   }
 
-  useEffect(() => {
-    const timer = setTimeout(() => loadDirectory({ reset: true, kind: view, query: search }), 250);
-    return () => {
-      clearTimeout(timer);
-      directorySequence.current += 1;
-    };
-  }, [search, view]);
-
-  async function command(action, payload, { preserveDetail = false } = {}) {
-    setBusy(true);
+  async function loadHomeDashboard() {
+    begin();
     try {
-      const result = await responseJson(await fetch('/api/crm/workspace', {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action, payload }),
-      }));
-      if (action === 'create_campaign') {
-        setNewCampaign(false);
-        setView('Campaigns');
-        await loadDirectory({ reset: true, kind: 'Campaigns', query: '' });
-        setMessage('Campaign created. Add a person to begin work.');
-        return result;
+      const result = await responseJson(await fetch('/api/crm/workspace?directory=home', { cache: 'no-store' }));
+      setHomeDashboard(result); setHomeError('');
+    } catch (error) {
+      setHomeError(error.message || 'CRM is temporarily unavailable');
+    } finally { finish(); }
+  }
+
+  useEffect(() => { loadDirectory('accounts'); loadDirectory('campaigns'); loadDirectory('contacts'); loadDirectory('tasks'); loadDirectory('emails'); loadDirectory('templates'); loadHomeDashboard(); }, []);
+  useEffect(() => {
+    const applyRoute = () => {
+      const route = routeFromLocation();
+      setModule(route.module); setSearch(route.search); setRecordTab(route.tab); setNotice(null);
+      if (route.selected) openRecord(route.selected.kind, route.selected.key, false, false); else { setSelected(null); setDetail(null); }
+    };
+    applyRoute();
+    window.addEventListener('popstate', applyRoute);
+    return () => window.removeEventListener('popstate', applyRoute);
+  }, []);
+  useEffect(() => {
+    if (module !== 'Accounts' && module !== 'Campaigns' && module !== 'Contacts' && module !== 'Leads' && module !== 'Opportunities' && module !== 'Tasks' && module !== 'Calendar' && module !== 'Emails' && module !== 'Email Templates') return;
+    const timer = setTimeout(() => loadDirectory(module === 'Campaigns' ? 'campaigns' : module === 'Contacts' ? 'contacts' : module === 'Tasks' || module === 'Calendar' ? 'tasks' : module === 'Emails' ? 'emails' : module === 'Email Templates' ? 'templates' : 'accounts', search), 250);
+    return () => clearTimeout(timer);
+  }, [search, module]);
+
+  function changeModule(next) {
+    setSelected(null); setDetail(null); setModule(next); setSearch(''); setNotice(null);
+    writeRoute({ module: next });
+  }
+  function routeQuickCreate(next) {
+    if (next === 'Campaigns') setCampaignCreateRequested(true);
+    changeModule(next);
+  }
+  function toggleFavorite(record) {
+    setFavoriteRecords((items) => items.some((item) => item.key === record.key)
+      ? items.filter((item) => item.key !== record.key)
+      : [{ kind: record.kind, key: record.key, name: record.name, type: record.type }, ...items].slice(0, 20));
+  }
+  function changeTab(next) {
+    setRecordTab(next);
+    writeRoute({ module, selected, tab: next });
+  }
+  function returnToModule(next) {
+    setSelected(null); setDetail(null); setModule(next); setSearch(''); setNotice(null);
+    writeRoute({ module: next });
+  }
+
+  async function command(action, payload) {
+    const commandSelection = selectedRef.current;
+    begin(); setNotice(null);
+    try {
+      const result = await responseJson(await fetch('/api/crm/workspace', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action, payload }) }));
+      // A late mutation response must never reopen a record that the operator
+      // has already left. The server separately validates every opaque handle.
+      if (commandSelection && selectedRef.current?.kind === commandSelection.kind && selectedRef.current?.key === commandSelection.key) {
+        await openRecord(commandSelection.kind, commandSelection.key, false);
       }
-      if (!preserveDetail) setDetail(result);
-      setMessage('Saved.');
+      await Promise.all([loadDirectory('accounts', module === 'Accounts' ? search : ''), loadDirectory('campaigns', module === 'Campaigns' ? search : ''), loadDirectory('contacts', module === 'Contacts' ? search : ''), loadDirectory('tasks', module === 'Tasks' ? search : ''), loadDirectory('emails', module === 'Emails' ? search : ''), loadDirectory('templates', module === 'Email Templates' ? search : ''), loadHomeDashboard()]);
+      setNotice({ kind: 'success', text: 'Saved. The record and activity timeline have been refreshed.' });
       return result;
     } catch (error) {
-      setMessage(error.message);
+      setNotice({ kind: 'error', text: `That change was not saved. ${error.message}. Review the record and try again.` });
       return null;
-    } finally {
-      setBusy(false);
-    }
+    } finally { finish(); }
   }
 
-  async function open(key, type) {
+  async function openRecord(kind, key, resetTab = true, updateHistory = true) {
     const sequence = ++detailSequence.current;
-    setSelectedKey(key);
-    setDetail(null);
-    setTab('Overview');
-    const result = await command(type === 'campaign' ? 'campaign_workspace' : 'account_workspace', type === 'campaign' ? { campaignKey: key } : { accountKey: key }, { preserveDetail: true });
-    if (sequence === detailSequence.current && result) setDetail(result);
+    begin(); setNotice(null); setSelected({ kind, key }); setDetail(null);
+    if (resetTab) setRecordTab('Overview');
+    if (updateHistory) writeRoute({ module: kind === 'account' ? 'Accounts' : kind === 'lead' ? 'Leads' : kind === 'opportunity' ? 'Opportunities' : kind === 'target_list' ? 'Target Lists' : kind === 'campaign' ? 'Campaigns' : kind === 'task' ? 'Tasks' : kind === 'email' ? 'Emails' : kind === 'template' ? 'Email Templates' : 'Contacts', selected: { kind, key }, tab: resetTab ? 'Overview' : recordTab });
+    try {
+      const action = kind === 'account' || kind === 'lead' || kind === 'opportunity' ? 'account_workspace' : kind === 'campaign' || kind === 'target_list' ? 'campaign_workspace' : kind === 'task' ? 'task_workspace' : kind === 'email' ? 'email_workspace' : kind === 'template' ? 'template_workspace' : 'contact_workspace';
+      const payload = kind === 'account' || kind === 'lead' || kind === 'opportunity' ? { accountKey: key } : kind === 'campaign' || kind === 'target_list' ? { campaignKey: key } : kind === 'task' ? { taskKey: key } : kind === 'email' ? { emailKey: key } : kind === 'template' ? { templateKey: key } : { contactKey: key };
+      const result = await responseJson(await fetch('/api/crm/workspace', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action, payload }) }));
+      if (sequence === detailSequence.current) {
+        setDetail(result);
+        const record = recordSearchEntries({ accounts, campaigns, contacts, tasks, emails, templates }).find((item) => item.kind === kind && item.key === key);
+        const recent = record || { kind, key, name: result.account?.name || result.campaign?.name || result.contact?.name || result.task?.title || result.email?.recipientName || result.template?.name || 'Record', type: kind[0].toUpperCase() + kind.slice(1) };
+        setRecentRecords((items) => [recent, ...items.filter((item) => item.key !== key)].slice(0, 10));
+      }
+      return result;
+    } catch (error) {
+      if (sequence === detailSequence.current) setNotice({ kind: 'error', text: `Could not open this record. ${error.message}` });
+      return null;
+    } finally { finish(); }
   }
 
-  const records = view === 'Accounts' ? accounts : campaigns;
-  const cursor = view === 'Accounts' ? accountCursor : campaignCursor;
-  const account = detail?.account;
-  const campaign = detail?.campaign;
+  const activities = detail?.activities || [];
 
-  return <main className="crm-equal-admin">
-    <header>
-      <p className="member-kicker">Plinko CRM · shared workspace</p>
-      <h1>{campaign?.name || account?.name || view}</h1>
-      <p>Work from accounts, people, tasks, activity, and campaigns.</p>
-      <p className="member-admin-link"><a href="/account">Back to account home →</a></p>
-    </header>
-    <nav aria-label="CRM views">
-      {['Accounts', 'Campaigns'].map((name) => <button type="button" key={name} className={view === name ? 'is-active' : ''} onClick={() => { setView(name); setDetail(null); }}>{name}</button>)}
-    </nav>
+  function renderModule() {
+    if (selected && !detail && busy) return <LoadingState label="Loading record details…" />;
+    if (selected && !detail && notice?.kind === 'error') return <ErrorState message={notice.text} retry={() => openRecord(selected.kind, selected.key, false, false)} />;
+    if (selected && detail) return selected.kind === 'account'
+      ? <AccountRecord detail={detail} accountKey={selected.key} tab={recordTab} setTab={changeTab} busy={busy} command={command} open={openRecord} onUnavailable={() => setNotice({ kind: 'error', text: 'This lifecycle action is not permitted from the CRM workspace.' })} back={() => returnToModule('Accounts')} />
+      : selected.kind === 'lead' ? <LeadRecord detail={detail} tab={recordTab} setTab={changeTab} open={openRecord} back={() => returnToModule('Leads')} />
+      : selected.kind === 'opportunity' ? <OpportunityRecord detail={detail} tab={recordTab} setTab={changeTab} open={openRecord} back={() => returnToModule('Opportunities')} />
+      : selected.kind === 'campaign' || selected.kind === 'target_list' ? <CampaignRecord detail={detail} campaignKey={selected.key} tab={recordTab} setTab={changeTab} busy={busy} command={command} contacts={contacts} label={selected.kind === 'target_list' ? 'Target List' : 'Campaign'} onUnavailable={() => setNotice({ kind: 'error', text: 'This lifecycle action is not permitted from the CRM workspace.' })} back={() => returnToModule(selected.kind === 'target_list' ? 'Target Lists' : 'Campaigns')} />
+        : selected.kind === 'task' ? <TaskRecord detail={detail} busy={busy} command={command} open={openRecord} back={() => returnToModule('Tasks')} />
+        : selected.kind === 'email' ? <EmailRecord detail={detail} tab={recordTab} setTab={changeTab} open={openRecord} back={() => returnToModule('Emails')} />
+        : selected.kind === 'template' ? <EmailTemplateRecord detail={detail} tab={recordTab} setTab={changeTab} open={openRecord} back={() => returnToModule('Email Templates')} />
+        : <ContactRecord detail={detail} tab={recordTab} setTab={changeTab} open={openRecord} back={() => returnToModule('Contacts')} />;
+    if (module === 'Accounts') return <AccountList accounts={accounts} busy={busy} search={search} setSearch={(next) => { setSearch(next); writeRoute({ module: 'Accounts', search: next }, 'replace'); }} open={openRecord} command={command} />;
+    if (module === 'Campaigns') return <CampaignList campaigns={campaigns} busy={busy} search={search} setSearch={(next) => { setSearch(next); writeRoute({ module: 'Campaigns', search: next }, 'replace'); }} open={openRecord} command={command} createRequested={campaignCreateRequested} clearCreateRequest={() => setCampaignCreateRequested(false)} />;
+    if (module === 'Target Lists') return <TargetListDirectory campaigns={campaigns} busy={busy} search={search} setSearch={(next) => { setSearch(next); writeRoute({ module: 'Target Lists', search: next }, 'replace'); }} open={openRecord} />;
+    if (module === 'Contacts') return <ContactsModule contacts={contacts} busy={busy} search={search} setSearch={(next) => { setSearch(next); writeRoute({ module: 'Contacts', search: next }, 'replace'); }} open={openRecord} />;
+    if (module === 'Leads') return <LeadsModule accounts={accounts} busy={busy} search={search} setSearch={(next) => { setSearch(next); writeRoute({ module: 'Leads', search: next }, 'replace'); }} open={openRecord} />;
+    if (module === 'Opportunities') return <OpportunitiesModule accounts={accounts} busy={busy} search={search} setSearch={(next) => { setSearch(next); writeRoute({ module: 'Opportunities', search: next }, 'replace'); }} open={openRecord} />;
+    if (module === 'Tasks') return <TasksModule tasks={tasks} busy={busy} search={search} setSearch={(next) => { setSearch(next); writeRoute({ module: 'Tasks', search: next }, 'replace'); }} open={openRecord} />;
+    if (module === 'Calendar') return <CalendarModule tasks={tasks} accounts={accounts} busy={busy} command={command} open={openRecord} />;
+    if (module === 'Calls' || module === 'Meetings') return <UnavailableActivityModule kind={module} />;
+    if (module === 'Emails') return <EmailsModule emails={emails} busy={busy} search={search} setSearch={(next) => { setSearch(next); writeRoute({ module: 'Emails', search: next }, 'replace'); }} open={openRecord} />;
+    if (module === 'Email Templates') return <EmailTemplatesModule templates={templates} busy={busy} search={search} setSearch={(next) => { setSearch(next); writeRoute({ module: 'Email Templates', search: next }, 'replace'); }} open={openRecord} />;
+    if (module === 'Documents') return <DocumentsModule />;
+    if (module === 'Knowledge Base') return <KnowledgeBaseModule />;
+    if (module === 'Activities') return <ActivitiesModule activities={activities} />;
+    if (module === 'Reports') return <ReportsModule accounts={accounts} campaigns={campaigns} />;
+    if (module === 'Dashboards') return <DashboardsModule accounts={accounts} campaigns={campaigns} />;
+    if (module === 'Administration') return <AdministrationModule />;
+    return <MyWork dashboard={homeDashboard} error={homeError} busy={busy} open={openRecord} openModule={changeModule} refresh={loadHomeDashboard} />;
+  }
 
-    {!detail && <section className="crm-directory">
-      <div className="crm-directory-heading">
-        <h2>{view === 'Accounts' ? 'Account directory' : 'Campaign directory'}</h2>
-        <label className="crm-search">{view === 'Accounts' ? 'Search accounts' : 'Search campaigns'}<input type="search" value={search} onChange={(event) => setSearch(event.target.value)} /></label>
-        {view === 'Campaigns' && <button type="button" onClick={() => setNewCampaign((showing) => !showing)}>New campaign</button>}
-      </div>
-      {newCampaign && <CampaignForm busy={busy} onSubmit={(payload) => command('create_campaign', payload)} />}
-      {view === 'Campaigns' && <IcpBrief />}
-      <div className="workspace-table-wrap"><table className="workspace-table"><thead><tr><th>{view === 'Accounts' ? 'Account' : 'Campaign'}</th><th>Status</th><th>{view === 'Accounts' ? 'Next action' : 'People'}</th><th>Updated</th></tr></thead><tbody>
-        {records.map((record) => <tr key={record.key}><td><button type="button" className="workspace-row-button" onClick={() => open(record.key, view === 'Accounts' ? 'account' : 'campaign')}><strong>{record.name}</strong><span>Open {view === 'Accounts' ? 'account' : 'campaign'}</span></button></td><td><span className="crm-stage-chip">{label(record.status)}</span></td><td>{view === 'Accounts' ? record.nextAction : record.members}</td><td>{formatDate(record.updatedAt)}</td></tr>)}
-      </tbody></table></div>
-      {cursor && <button type="button" className="crm-load-more" disabled={busy} onClick={() => loadDirectory({ reset: false })}>{busy ? 'Loading…' : 'Load more'}</button>}
-    </section>}
-
-    {account && <AccountDetail detail={detail} accountKey={selectedKey} tab={tab} setTab={setTab} command={command} busy={busy} />}
-    {campaign && <CampaignDetail detail={detail} campaignKey={selectedKey} tab={tab} setTab={setTab} command={command} busy={busy} />}
-    {message && <p className="crm-status" role="status">{message}</p>}
+  const searchRecords = recordSearchEntries({ accounts, campaigns, contacts, tasks, emails, templates });
+  const favorites = favoriteRecords.map((favorite) => searchRecords.find((item) => item.key === favorite.key) || favorite);
+  const recent = recentRecords.map((recentRecord) => searchRecords.find((item) => item.key === recentRecord.key) || recentRecord);
+  return <main className="crm-app-shell">
+    <header className="crm-topbar"><div><a className="crm-brand" href="/account">PLINKO <span>CRM</span></a><p>Shared campaign workspace</p></div><div className="crm-topbar-actions"><GlobalSearch records={searchRecords} open={openRecord} toggleFavorite={toggleFavorite} favorites={new Set(favorites.map((item) => item.key))} /><WorkspaceShortcuts favorites={favorites} recent={recent} open={openRecord} toggleFavorite={toggleFavorite} /><QuickCreate onRoute={routeQuickCreate} /><button type="button" className="crm-notification-button" onClick={() => setNotice({ kind: 'success', text: 'No new workspace notifications.' })}>Notifications</button><UserMenu /><a className="crm-back-link" href="/account">Back to account home</a></div></header>
+    <ModuleNav active={module} onChange={changeModule} />
+    {notice && <div role="status" className={`crm-notice crm-notice-${notice.kind}`}><strong>{notice.kind === 'error' ? 'Action needs attention' : 'Updated'}</strong><span>{notice.text}</span><button type="button" aria-label="Dismiss notification" onClick={() => setNotice(null)}>×</button></div>}
+    {renderModule()}
   </main>;
 }
 
-function SectionButtons({ tab, setTab, names }) {
-  return <div className="crm-tabs" aria-label="Workspace sections">{names.map((name) => <button type="button" aria-pressed={tab === name} className={tab === name ? 'is-active' : ''} key={name} onClick={() => setTab(name)}>{name}</button>)}</div>;
+function MyWork({ dashboard, error, busy, open, openModule, refresh }) {
+  if (!dashboard && busy) return <div className="crm-module"><LoadingState label="Loading your authenticated CRM work…" /></div>;
+  if (!dashboard && error) return <div className="crm-module"><ErrorState message={`My Work could not load. ${error}`} retry={refresh} /></div>;
+  const accounts = dashboard?.accounts || [];
+  const tasks = dashboard?.tasks || [];
+  const activity = dashboard?.activity || [];
+  const campaigns = dashboard?.campaigns || [];
+  const work = accounts.filter((account) => account.nextAction && account.nextAction !== 'Open account').slice(0, 8);
+  const noOwner = accounts.filter((account) => account.status === 'pending').length;
+  const approvedCampaigns = campaigns.filter((campaign) => campaign.status === 'approved' || campaign.status === 'active');
+  return <div className="crm-module"><header className="crm-module-heading"><div><p className="crm-eyebrow">Daily workspace</p><h1>My Work</h1><p>This week, account-scoped tasks and activity are refreshed from the authenticated CRM read model; manual work stays account-owned.</p></div><div className="crm-freshness">{busy ? 'Refreshing authenticated data…' : `Fresh ${formatDate(dashboard?.fetchedAt, 'time unavailable')}`}</div></header>
+    <div className="crm-kpi-grid"><Kpi label="Next actions" value={work.length} /><Kpi label="Needs review" value={noOwner} tone="amber" /><Kpi label="Approved / active campaigns" value={approvedCampaigns.length} tone="green" /><Kpi label="No next action" value={accounts.filter((account) => !account.nextAction || account.nextAction === 'Open account').length} tone="red" /></div>
+    <div className="crm-home-grid"><Panel title="My Work" action={<button className="crm-text-button" type="button" onClick={() => openModule('Accounts')}>View accounts</button>}><WorkTable accounts={work} open={open} /></Panel><Panel title="Open tasks" action={<span className="crm-panel-note">Recent account scope</span>}>{tasks.length ? <ul className="crm-home-list">{tasks.map((task, index) => <li key={`${task.accountKey}-${index}`}><button type="button" className="crm-record-link" onClick={() => open('account', task.accountKey)}>{task.title}</button><small>{task.accountName} · {task.owner || 'Unassigned'} · {shortDate(task.dueAt, 'No due date')}</small></li>)}</ul> : <EmptyState title="No open tasks in recent account work">Open an account to add a follow-up; tasks remain account-scoped.</EmptyState>}</Panel></div>
+    <div className="crm-home-grid"><Panel title="Recent activity" action={<button className="crm-text-button" type="button" onClick={() => openModule('Activities')}>Open activity</button>}>{activity.length ? <ol className="crm-home-list">{activity.map((item, index) => <li key={`${item.accountKey}-${item.occurredAt}-${index}`}><button type="button" className="crm-record-link" onClick={() => open('account', item.accountKey)}>{label(item.type, 'CRM update')}</button><small>{item.accountName} · {formatDate(item.occurredAt)}</small></li>)}</ol> : <EmptyState title="No recent activity in this account set">Activity will appear after notes, reviews, tasks, or manual outcomes are recorded.</EmptyState>}</Panel><Panel title="Campaign status" action={<button className="crm-text-button" type="button" onClick={() => openModule('Campaigns')}>View campaigns</button>}>{campaigns.length ? <ul className="crm-home-list">{campaigns.slice(0, 8).map((campaign) => <li key={campaign.key}><button type="button" className="crm-record-link" onClick={() => open('campaign', campaign.key)}>{campaign.name}</button><small><StatusChip tone={campaign.status === 'approved' || campaign.status === 'active' ? 'green' : 'amber'}>{label(campaign.status, 'Status unavailable')}</StatusChip> · {campaign.members} people · updated {shortDate(campaign.updatedAt)}</small></li>)}</ul> : <EmptyState title="No campaigns yet">Create a manual campaign when approved account and contact records are ready.</EmptyState>}</Panel></div>
+  </div>;
+}
+function Kpi({ label, value, tone = 'neutral' }) { return <article className={`crm-kpi crm-kpi-${tone}`}><span>{label}</span><strong>{value}</strong></article>; }
+function WorkTable({ accounts, open, selectedKeys = [], onSelect }) { return accounts.length ? <div className="crm-table-wrap"><table className="crm-table"><thead><tr>{onSelect && <th scope="col"><span className="sr-only">Select</span></th>}<th>Account</th><th>Stage</th><th>Next action</th><th>Due</th><th>Owner</th><th>Last updated</th></tr></thead><tbody>{accounts.map((account) => <tr key={account.key}>{onSelect && <td><input type="checkbox" aria-label={`Select ${account.name}`} checked={selectedKeys.includes(account.key)} onChange={() => onSelect(account.key)} /></td>}<td><button type="button" className="crm-record-link" onClick={() => open('account', account.key)}>{account.name}</button></td><td><StatusChip tone={account.status === 'approved' ? 'green' : 'amber'}>{label(account.status)}</StatusChip></td><td>{account.nextAction || '—'}</td><td>—</td><td>Unassigned</td><td>{shortDate(account.updatedAt)}</td></tr>)}</tbody></table></div> : <EmptyState title="No work is waiting">Accounts with an assigned next action will appear here.</EmptyState>; }
+function AccountList({ accounts, search, setSearch, open, command, busy }) {
+  const [view, setView] = useState('All accounts');
+  const [sort, setSort] = useState('updated');
+  const [page, setPage] = useState(0);
+  const [selectedKeys, setSelectedKeys] = useState([]);
+  const filtered = accounts.filter((account) => view === 'Needs review' ? account.status === 'pending' : view === 'No next action' ? !account.nextAction || account.nextAction === 'Open account' : true);
+  const sorted = [...filtered].sort((a, b) => sort === 'name' ? a.name.localeCompare(b.name) : sort === 'status' ? String(a.status).localeCompare(String(b.status)) : String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+  const pageSize = 25;
+  const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
+  const rows = sorted.slice(page * pageSize, (page + 1) * pageSize);
+  const setActiveView = (next) => { setView(next); setPage(0); setSelectedKeys([]); };
+  return <div className="crm-module"><header className="crm-module-heading"><div><p className="crm-eyebrow">Accounts</p><h1>Accounts</h1><p>All source accounts, with the current work state visible before you open the record.</p></div><label className="crm-search-box"><span>Search accounts</span><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name or company" /></label></header><details className="crm-disclosure"><summary>New account</summary><form className="crm-inline-form" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); command('create_account', { displayName: form.get('displayName'), reference: form.get('reference') }).then((result) => result && event.currentTarget.reset()); }}><label>Account name<input name="displayName" required maxLength="240" /></label><label>Reference <span className="crm-muted-copy">(optional)</span><input name="reference" maxLength="1000" placeholder="Website or internal source reference" /></label><button className="crm-primary" disabled={busy}>Create account</button></form></details><SavedViews views={['All accounts', 'Needs review', 'No next action', 'Recently active']} active={view} onChange={setActiveView} /><Panel title={busy ? 'Loading accounts…' : `${filtered.length} accounts`} action={<ListToolbar count={filtered.length} selectedCount={selectedKeys.length} sort={sort} setSort={(next) => { setSort(next); setPage(0); }} onClearSelection={() => setSelectedKeys([])} />}>{busy && !accounts.length ? <LoadingState label="Loading accounts…" /> : <><WorkTable accounts={rows} open={open} selectedKeys={selectedKeys} onSelect={(key) => setSelectedKeys((keys) => keys.includes(key) ? keys.filter((item) => item !== key) : [...keys, key])} /><Pagination page={page} total={pageCount} onChange={setPage} /></>}</Panel></div>;
+}
+function leadHandoffState(account) {
+  if (account.qualification !== 'approved') return 'Account qualification required';
+  return 'Research approval required before person intake';
+}
+function LeadsModule({ accounts, busy, search, setSearch, open }) {
+  const [view, setView] = useState('All leads');
+  const [sort, setSort] = useState('updated');
+  const [page, setPage] = useState(0);
+  const [selectedKeys, setSelectedKeys] = useState([]);
+  const filtered = accounts.filter((account) => view === 'Needs qualification' ? account.qualification !== 'approved' : view === 'Ready for research review' ? account.qualification === 'approved' : true);
+  const sorted = [...filtered].sort((left, right) => sort === 'name' ? left.name.localeCompare(right.name) : sort === 'status' ? String(left.qualification || left.status).localeCompare(String(right.qualification || right.status)) : String(right.updatedAt || '').localeCompare(String(left.updatedAt || '')));
+  const pageSize = 25;
+  const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
+  const rows = sorted.slice(page * pageSize, page * pageSize + pageSize);
+  const changeView = (next) => { setView(next); setPage(0); setSelectedKeys([]); };
+  return <div className="crm-module"><header className="crm-module-heading"><div><p className="crm-eyebrow">Pipeline</p><h1>Leads</h1><p>Lead records mirror sourced accounts without creating a second lifecycle. Qualification, research, and contact approval remain separate decisions.</p></div><label className="crm-search-box"><span>Search leads</span><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Company or source" /></label></header><SavedViews views={['All leads', 'Needs qualification', 'Ready for research review']} active={view} onChange={changeView} /><Panel title={busy ? 'Loading leads…' : `${filtered.length} leads`} action={<ListToolbar count={filtered.length} selectedCount={selectedKeys.length} sort={sort} setSort={(next) => { setSort(next); setPage(0); }} onClearSelection={() => setSelectedKeys([])} />}>{busy && !accounts.length ? <LoadingState label="Loading leads…" /> : filtered.length ? <><div className="crm-table-wrap"><table className="crm-table"><thead><tr><th><span className="sr-only">Select</span></th><th>Lead</th><th>Status</th><th>Source</th><th>Qualification</th><th>Next permitted hand-off</th><th>Updated</th></tr></thead><tbody>{rows.map((account) => <tr key={account.key}><td><input type="checkbox" aria-label={`Select ${account.name}`} checked={selectedKeys.includes(account.key)} onChange={() => setSelectedKeys((keys) => keys.includes(account.key) ? keys.filter((key) => key !== account.key) : [...keys, account.key])} /></td><td><button type="button" className="crm-record-link" onClick={() => open('lead', account.key)}>{account.name}</button></td><td><StatusChip tone={account.status === 'approved' ? 'green' : 'amber'}>{label(account.status)}</StatusChip></td><td>{label(account.source, 'Source not recorded')}</td><td>{label(account.qualification, 'Not qualified')}</td><td>{leadHandoffState(account)}</td><td>{shortDate(account.updatedAt)}</td></tr>)}</tbody></table></div><Pagination page={page} total={pageCount} onChange={setPage} /></> : <EmptyState title="No leads match this view">Sourced accounts appear here as lead records; no pipeline metrics or commitments are inferred.</EmptyState>}</Panel></div>;
+}
+function CampaignList({ campaigns, search, setSearch, open, command, busy, createRequested, clearCreateRequest }) { const [showForm, setShowForm] = useState(false); useEffect(() => { if (createRequested) { setShowForm(true); clearCreateRequest(); } }, [createRequested, clearCreateRequest]); return <div className="crm-module"><header className="crm-module-heading"><div><p className="crm-eyebrow">Campaigns</p><h1>Campaigns</h1><p>Manual campaigns are organized around members, work due, drafts, and recorded outcomes.</p></div><div className="crm-heading-actions"><label className="crm-search-box"><span>Search campaigns</span><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} /></label><button className="crm-primary" type="button" onClick={() => setShowForm(!showForm)}>New campaign</button></div></header>{showForm && <form className="crm-inline-form" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); command('create_campaign', { name: form.get('name'), channel: form.get('channel'), purpose: form.get('purpose') }).then((result) => result && setShowForm(false)); }}><label>Name<input name="name" required defaultValue={TAX_FIRM_WEEKLY_CALL_ICP.name} /></label><label>Channel<select name="channel" defaultValue="call"><option value="call">Call</option><option value="email">Email</option><option value="linkedin">LinkedIn</option></select></label><label>Purpose<input name="purpose" defaultValue="Weekly manual call queue" /></label><button className="crm-primary" disabled={busy}>Create campaign</button></form>}<Panel title={busy ? 'Loading campaigns…' : `${campaigns.length} campaigns`}><div className="crm-table-wrap"><table className="crm-table"><thead><tr><th>Campaign</th><th>Channel</th><th>Status</th><th>People</th><th>Purpose</th><th>Updated</th></tr></thead><tbody>{campaigns.map((campaign) => <tr key={campaign.key}><td><button className="crm-record-link" type="button" onClick={() => open('campaign', campaign.key)}>{campaign.name}</button></td><td>{label(campaign.channel)}</td><td><StatusChip tone={campaign.status === 'active' ? 'green' : 'neutral'}>{label(campaign.status)}</StatusChip></td><td>{campaign.members}</td><td>{campaign.purpose || '—'}</td><td>{shortDate(campaign.updatedAt)}</td></tr>)}</tbody></table></div></Panel></div>; }
+function TargetListDirectory({ campaigns, busy, search, setSearch, open }) { return <div className="crm-module"><header className="crm-module-heading"><div><p className="crm-eyebrow">Campaign audience</p><h1>Target Lists</h1><p>Each target list is the authenticated membership queue for one manual campaign. It does not create a separate contact store, export, enrichment, or dispatch path.</p></div><label className="crm-search-box"><span>Search target lists</span><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Campaign or purpose" /></label></header><Panel title={busy ? 'Loading target lists…' : `${campaigns.length} target lists`}><div className="crm-table-wrap"><table className="crm-table"><thead><tr><th>Target list</th><th>Campaign channel</th><th>List state</th><th>Members</th><th>Purpose</th></tr></thead><tbody>{campaigns.map((campaign) => <tr key={campaign.key}><td><button className="crm-record-link" type="button" onClick={() => open('target_list', campaign.key)}>{campaign.name}</button></td><td>{label(campaign.channel)}</td><td><StatusChip tone={campaign.status === 'active' ? 'green' : 'neutral'}>{label(campaign.status)}</StatusChip></td><td>{campaign.members}</td><td>{campaign.purpose || '—'}</td></tr>)}</tbody></table></div>{!campaigns.length && <EmptyState title="No target lists yet">Create a manual campaign first. The list remains empty until individually approved, non-suppressed people are added.</EmptyState>}</Panel></div>; }
+function ContactsModule({ contacts, busy, search, setSearch, open }) {
+  const [view, setView] = useState('All contacts');
+  const [sort, setSort] = useState('updated');
+  const [page, setPage] = useState(0);
+  const [selectedKeys, setSelectedKeys] = useState([]);
+  const filtered = contacts.filter((contact) => view === 'Needs contact approval' ? contact.approval !== 'approved' && contact.disposition !== 'do_not_contact' : view === 'Suppressed' ? contact.disposition === 'do_not_contact' : true);
+  const sorted = [...filtered].sort((left, right) => sort === 'name' ? left.name.localeCompare(right.name) : sort === 'status' ? String(left.status).localeCompare(String(right.status)) : String(right.updatedAt || '').localeCompare(String(left.updatedAt || '')));
+  const pageSize = 25;
+  const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
+  const rows = sorted.slice(page * pageSize, page * pageSize + pageSize);
+  return <div className="crm-module"><header className="crm-module-heading"><div><p className="crm-eyebrow">People</p><h1>Contacts</h1><p>People remain linked to the owning account. Account, research, and contact approval are separate decisions.</p></div><label className="crm-search-box"><span>Search contacts</span><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name, role, or account" /></label></header><SavedViews views={['All contacts', 'Needs contact approval', 'Suppressed']} active={view} onChange={(next) => { setView(next); setPage(0); setSelectedKeys([]); }} /><Panel title={busy ? 'Loading contacts…' : `${filtered.length} contacts`} action={<ListToolbar count={filtered.length} selectedCount={selectedKeys.length} sort={sort} setSort={(next) => { setSort(next); setPage(0); }} onClearSelection={() => setSelectedKeys([])} />}>{busy && !contacts.length ? <LoadingState label="Loading contacts…" /> : contacts.length ? <><div className="crm-table-wrap"><table className="crm-table"><thead><tr><th><span className="sr-only">Select</span></th><th>Contact</th><th>Account</th><th>Role</th><th>Contact approval</th><th>Consent / suppression</th></tr></thead><tbody>{rows.map((person) => <tr key={person.key}><td><input type="checkbox" aria-label={`Select ${person.name}`} checked={selectedKeys.includes(person.key)} onChange={() => setSelectedKeys((keys) => keys.includes(person.key) ? keys.filter((key) => key !== person.key) : [...keys, person.key])} /></td><td><button type="button" className="crm-record-link" onClick={() => open('contact', person.key)}>{person.name}</button></td><td><button type="button" className="crm-record-link" onClick={() => open('account', person.accountKey)}>{person.accountName}</button></td><td>{person.title || '—'}</td><td><StatusChip tone={person.approval === 'approved' ? 'green' : 'amber'}>{label(person.approval)}</StatusChip></td><td>{person.disposition === 'do_not_contact' ? <StatusChip tone="red">Do not contact</StatusChip> : <StatusChip tone="neutral">No suppression</StatusChip>}</td></tr>)}</tbody></table></div><Pagination page={page} total={pageCount} onChange={setPage} /></> : <EmptyState title="No contacts match this view">Contacts appear here after account-scoped intake. This list does not expose an outbound-dispatch path.</EmptyState>}</Panel></div>;
 }
 
-function CampaignForm({ busy, onSubmit }) {
-  return <form className="crm-composer" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); onSubmit({ name: form.get('name'), channel: form.get('channel'), purpose: form.get('purpose') }); }}>
-    <label>Name<input name="name" required maxLength="240" defaultValue={TAX_FIRM_WEEKLY_CALL_ICP.name} /></label><label>Channel<select name="channel" defaultValue={TAX_FIRM_WEEKLY_CALL_ICP.channel}><option value="email">Email</option><option value="call">Call</option><option value="linkedin">LinkedIn</option></select></label><label>Purpose<input name="purpose" maxLength="1000" defaultValue="Weekly manual call queue" /></label><button disabled={busy}>Create campaign</button>
-  </form>;
+function ContactRecord({ detail, tab, setTab, open, back }) {
+  const contact = detail.contact;
+  const suppressed = contact.disposition === 'do_not_contact';
+  return <div className="crm-record"><button className="crm-breadcrumb" type="button" onClick={back}>← Contacts</button><header className="crm-record-header"><div><p className="crm-eyebrow">Contact</p><h1>{contact.name}</h1><div className="crm-record-subline"><StatusChip tone={contact.approval === 'approved' ? 'green' : 'amber'}>{label(contact.approval, 'Contact review pending')}</StatusChip>{suppressed ? <StatusChip tone="red">Do not contact</StatusChip> : <span>Not suppressed</span>}</div></div><div className="crm-record-header-actions"><section className="crm-next-action-card"><span>Next permitted step</span><strong>{suppressed ? 'No further contact action' : contact.approval === 'approved' ? 'Review eligible campaign membership' : 'Contact approval required'}</strong><small>No external delivery or provider-dispatch capability</small></section></div></header><RecordTabs names={CONTACT_TABS} active={tab} setActive={setTab} />
+    {tab === 'Overview' && <div className="crm-record-layout"><div><Panel title="Contact details"><dl className="crm-side-details"><div><dt>Role</dt><dd>{contact.title || 'Not recorded'}</dd></div><div><dt>Email</dt><dd>{contact.email || 'No contact details'}</dd></div><div><dt>Contact approval</dt><dd>{label(contact.approval, 'Pending')}</dd></div><div><dt>Consent / suppression</dt><dd>{suppressed ? 'Do not contact — terminal' : 'No suppression recorded'}</dd></div></dl></Panel><Panel title="Account linkage"><button type="button" className="crm-record-link" onClick={() => open('account', detail.account.key)}>{detail.account.name}</button><p className="crm-muted-copy">Account state: {label(detail.account.approval || detail.account.status)}. Account approval does not approve this contact or authorize outreach.</p></Panel></div><aside><Panel title="Related records"><dl className="crm-side-details"><div><dt>Activities</dt><dd>{detail.activities.length}</dd></div><div><dt>Approved campaign memberships</dt><dd>{detail.memberships.length}</dd></div></dl></Panel></aside></div>}
+    {tab === 'Activities' && <Panel title="Related account activity"><p className="crm-muted-copy">Activity is account-scoped; it is shown here as related context and does not create contact authority.</p><ActivityList activities={detail.activities} /></Panel>}
+    {tab === 'Campaign memberships' && <Panel title="Approved campaign memberships">{detail.memberships.length ? <div className="crm-table-wrap"><table className="crm-table"><thead><tr><th>Campaign</th><th>Campaign state</th><th>Membership state</th><th>Latest draft</th></tr></thead><tbody>{detail.memberships.map((membership) => <tr key={membership.key}><td><button type="button" className="crm-record-link" onClick={() => open('campaign', membership.campaignKey)}>{membership.campaignName}</button></td><td><StatusChip>{label(membership.campaignStatus)}</StatusChip></td><td><StatusChip>{label(membership.status)}</StatusChip></td><td>{label(membership.latestDraftApproval, 'No draft')}</td></tr>)}</tbody></table></div> : <EmptyState title="No approved campaign memberships">Only memberships from approved or active campaigns appear here. Contact approval remains separate from membership, draft, and manual-attempt approvals.</EmptyState>}</Panel>}
+  </div>;
+}
+function LeadRecord({ detail, tab, setTab, open, back }) {
+  const account = detail.account;
+  const approved = detail.recordDetails.reviewStatus === 'approved';
+  const contacts = detail.contacts || [];
+  const suppressed = contacts.filter((contact) => contact.disposition === 'do_not_contact').length;
+  const handoff = !approved ? 'Account qualification required' : contacts.length ? 'Review each contact separately before any campaign hand-off' : 'Research approval required before person intake';
+  return <div className="crm-record"><button className="crm-breadcrumb" type="button" onClick={back}>← Leads</button><header className="crm-record-header"><div><p className="crm-eyebrow">Lead</p><h1>{account.name}</h1><div className="crm-record-subline"><StatusChip tone={approved ? 'green' : 'amber'}>{label(account.status)}</StatusChip><span>Source: {label(detail.recordDetails.source, 'Not recorded')}</span></div></div><div className="crm-record-header-actions"><section className="crm-next-action-card"><span>Next permitted hand-off</span><strong>{handoff}</strong><small>Lead status does not authorize research, contact, drafting, or manual outreach.</small></section></div></header><RecordTabs names={LEAD_TABS} active={tab} setActive={setTab} />
+    {tab === 'Overview' && <div className="crm-record-layout"><div><Panel title="Lead summary"><dl className="crm-side-details"><div><dt>Status</dt><dd>{label(account.status)}</dd></div><div><dt>Source</dt><dd>{label(detail.recordDetails.source, 'Not recorded')}</dd></div><div><dt>Qualification</dt><dd>{label(detail.recordDetails.reviewStatus, 'Pending account qualification')}</dd></div><div><dt>Next action</dt><dd>{detail.nextAction?.label || 'No follow-up scheduled'}</dd></div></dl></Panel><Panel title="Account association"><button type="button" className="crm-record-link" onClick={() => open('account', detail.account.key)}>{account.name}</button><p className="crm-muted-copy">The lead mirrors this account record. It does not create a duplicate account or a customer commitment.</p></Panel></div><aside><Panel title="Lead context"><dl className="crm-side-details"><div><dt>Contacts</dt><dd>{contacts.length}</dd></div><div><dt>Activities</dt><dd>{detail.activities.length}</dd></div><div><dt>Suppressed contacts</dt><dd>{suppressed}</dd></div></dl></Panel></aside></div>}
+    {tab === 'Qualification' && <Panel title="Qualification and approvals"><dl className="crm-side-details"><div><dt>Account qualification</dt><dd>{label(detail.recordDetails.reviewStatus, 'Pending')}</dd></div><div><dt>Research approval</dt><dd>Not exposed by the current CRM read contract — fail closed</dd></div><div><dt>Contact approval</dt><dd>Separate per contact; never implied by lead qualification</dd></div></dl><p className="crm-muted-copy">A qualified account can enter a research-review queue only. It cannot create person intake, contactability, a draft, or a manual attempt by itself.</p></Panel>}
+    {tab === 'Associations' && <Panel title="Account and contact associations"><div className="crm-table-wrap"><table className="crm-table"><thead><tr><th>Record</th><th>Role</th><th>Contact approval</th><th>Disposition</th></tr></thead><tbody><tr><td><button type="button" className="crm-record-link" onClick={() => open('account', detail.account.key)}>{account.name}</button></td><td>Owning account</td><td>Account qualification: {label(detail.recordDetails.reviewStatus, 'Pending')}</td><td>—</td></tr>{contacts.map((contact) => <tr key={contact.key}><td><button type="button" className="crm-record-link" onClick={() => open('contact', contact.key)}>{contact.name}</button></td><td>{contact.title || 'Contact'}</td><td>{label(contact.approval, 'Pending')}</td><td>{contact.disposition === 'do_not_contact' ? <StatusChip tone="red">Do not contact</StatusChip> : 'Not suppressed'}</td></tr>)}</tbody></table></div>{!contacts.length && <p className="crm-muted-copy">No contacts are linked. Person intake remains unavailable until the distinct research approval is recorded.</p>}</Panel>}
+    {tab === 'Activities' && <Panel title="Related activity"><p className="crm-muted-copy">Activity is account-scoped context. It does not change lead qualification or contact authority.</p><ActivityList activities={detail.activities} /></Panel>}
+    {tab === 'Handoff' && <Panel title="Conversion and hand-off state"><p><strong>{handoff}</strong></p><p className="crm-muted-copy">This CRM currently exposes account, contact, campaign, and manual-work records—not a separate converted-lead object. The account stays authoritative, and every later approval boundary is preserved.</p>{suppressed > 0 && <p className="crm-muted-copy">{suppressed} linked contact{suppressed === 1 ? ' is' : 's are'} terminally suppressed and cannot be handed off to campaign, draft, or manual-attempt work.</p>}</Panel>}
+  </div>;
+}
+function opportunityStage(account) { return account.status === 'approved' ? 'Qualified account' : account.status === 'rejected' ? 'Closed / not pursuing' : 'Qualification pending'; }
+function OpportunitiesModule({ accounts, busy, search, setSearch, open }) {
+  const [view, setView] = useState('All opportunities');
+  const [sort, setSort] = useState('updated');
+  const [page, setPage] = useState(0);
+  const [selectedKeys, setSelectedKeys] = useState([]);
+  const filtered = accounts.filter((account) => view === 'Qualification pending' ? account.qualification !== 'approved' : view === 'Qualified accounts' ? account.qualification === 'approved' : view === 'Closed / not pursuing' ? account.status === 'rejected' : true);
+  const sorted = [...filtered].sort((left, right) => sort === 'name' ? left.name.localeCompare(right.name) : sort === 'status' ? opportunityStage(left).localeCompare(opportunityStage(right)) : String(right.updatedAt || '').localeCompare(String(left.updatedAt || '')));
+  const pageSize = 25;
+  const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
+  const rows = sorted.slice(page * pageSize, page * pageSize + pageSize);
+  return <div className="crm-module"><header className="crm-module-heading"><div><p className="crm-eyebrow">Pipeline context</p><h1>Opportunities</h1><p>Opportunity views mirror account qualification context. Amount, probability, and close date remain unavailable until the CRM service provides authoritative opportunity records.</p></div><label className="crm-search-box"><span>Search opportunities</span><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Account or pipeline context" /></label></header><SavedViews views={['All opportunities', 'Qualification pending', 'Qualified accounts', 'Closed / not pursuing']} active={view} onChange={(next) => { setView(next); setPage(0); setSelectedKeys([]); }} /><Panel title={busy ? 'Loading opportunities…' : `${filtered.length} opportunity contexts`} action={<ListToolbar count={filtered.length} selectedCount={selectedKeys.length} sort={sort} setSort={(next) => { setSort(next); setPage(0); }} onClearSelection={() => setSelectedKeys([])} />}>{busy && !accounts.length ? <LoadingState label="Loading opportunity contexts…" /> : filtered.length ? <><div className="crm-table-wrap"><table className="crm-table"><thead><tr><th><span className="sr-only">Select</span></th><th>Opportunity</th><th>Stage</th><th>Amount</th><th>Probability</th><th>Close date</th><th>Updated</th></tr></thead><tbody>{rows.map((account) => <tr key={account.key}><td><input type="checkbox" aria-label={`Select ${account.name}`} checked={selectedKeys.includes(account.key)} onChange={() => setSelectedKeys((keys) => keys.includes(account.key) ? keys.filter((key) => key !== account.key) : [...keys, account.key])} /></td><td><button type="button" className="crm-record-link" onClick={() => open('opportunity', account.key)}>{account.name}</button></td><td><StatusChip tone={account.status === 'approved' ? 'green' : account.status === 'rejected' ? 'red' : 'amber'}>{opportunityStage(account)}</StatusChip></td><td>Not recorded</td><td>Not recorded</td><td>Not recorded</td><td>{shortDate(account.updatedAt)}</td></tr>)}</tbody></table></div><Pagination page={page} total={pageCount} onChange={setPage} /></> : <EmptyState title="No opportunity contexts available">The current CRM account directory has no records for this view.</EmptyState>}</Panel></div>;
+}
+function OpportunityRecord({ detail, tab, setTab, open, back }) {
+  const account = detail.account;
+  const stage = opportunityStage(account);
+  const primaryContact = detail.contacts.find((contact) => contact.disposition !== 'do_not_contact') || null;
+  return <div className="crm-record"><button className="crm-breadcrumb" type="button" onClick={back}>← Opportunities</button><header className="crm-record-header"><div><p className="crm-eyebrow">Opportunity context</p><h1>{account.name}</h1><div className="crm-record-subline"><StatusChip tone={account.status === 'approved' ? 'green' : account.status === 'rejected' ? 'red' : 'amber'}>{stage}</StatusChip><span>Account-backed pipeline context</span></div></div><div className="crm-record-header-actions"><section className="crm-next-action-card"><span>Next action</span><strong>{detail.nextAction?.label || 'No follow-up scheduled'}</strong><small>{detail.nextAction?.owner || 'Unassigned'} · {shortDate(detail.nextAction?.dueAt, 'No due date')}</small></section></div></header><RecordTabs names={OPPORTUNITY_TABS} active={tab} setActive={setTab} />
+    {tab === 'Overview' && <div className="crm-record-layout"><div><Panel title="Opportunity summary"><dl className="crm-side-details"><div><dt>Stage</dt><dd>{stage}</dd></div><div><dt>Amount</dt><dd>Not recorded</dd></div><div><dt>Probability</dt><dd>Not recorded</dd></div><div><dt>Close date</dt><dd>Not recorded</dd></div></dl><p className="crm-muted-copy">These fields remain unavailable rather than inferred from account state, activity, or campaign work.</p></Panel><Panel title="Account association"><button type="button" className="crm-record-link" onClick={() => open('account', account.key)}>{account.name}</button><p className="crm-muted-copy">This opportunity context mirrors the authoritative account; it does not create a deal, forecast, customer commitment, or financial metric.</p></Panel></div><aside><Panel title="Pipeline context"><dl className="crm-side-details"><div><dt>Qualification</dt><dd>{label(detail.recordDetails.reviewStatus, 'Pending')}</dd></div><div><dt>Related contacts</dt><dd>{detail.contacts.length}</dd></div><div><dt>Open tasks</dt><dd>{detail.tasks.filter((task) => task.status === 'open').length}</dd></div><div><dt>Activity entries</dt><dd>{detail.activities.length}</dd></div></dl></Panel></aside></div>}
+    {tab === 'Associations' && <Panel title="Account and contact associations"><div className="crm-table-wrap"><table className="crm-table"><thead><tr><th>Record</th><th>Relationship</th><th>State</th></tr></thead><tbody><tr><td><button type="button" className="crm-record-link" onClick={() => open('account', account.key)}>{account.name}</button></td><td>Owning account</td><td>{label(account.status)}</td></tr>{detail.contacts.map((contact) => <tr key={contact.key}><td><button type="button" className="crm-record-link" onClick={() => open('contact', contact.key)}>{contact.name}</button></td><td>{contact.key === primaryContact?.key ? 'Related contact' : 'Related contact'}</td><td>{contact.disposition === 'do_not_contact' ? 'Do not contact' : label(contact.approval, 'Contact review pending')}</td></tr>)}</tbody></table></div>{!detail.contacts.length && <p className="crm-muted-copy">No contacts are linked to this account. The account context does not imply contact approval.</p>}</Panel>}
+    {tab === 'Activity' && <Panel title="Activity timeline"><p className="crm-muted-copy">Account activity provides related context; it does not establish deal value, close likelihood, or a customer commitment.</p><ActivityList activities={detail.activities} /></Panel>}
+    {tab === 'Pipeline context' && <Panel title="Pipeline context and data boundary"><p><strong>{stage}</strong></p><p className="crm-muted-copy">The current CRM service has no opportunity entity or opportunity-specific lifecycle. This account-backed view surfaces the available stage, association, task, and activity context while withholding unrecorded amount, probability, close date, and commitment data.</p></Panel>}
+  </div>;
+}
+function TasksModule({ tasks, busy, search, setSearch, open }) {
+  const [view, setView] = useState('Open tasks');
+  const [sort, setSort] = useState('due');
+  const filtered = tasks.filter((task) => view === 'Open tasks' ? task.status === 'open' : view === 'Completed tasks' ? task.status !== 'open' : true);
+  const sorted = [...filtered].sort((left, right) => sort === 'name' ? left.title.localeCompare(right.title) : sort === 'status' ? String(left.status).localeCompare(String(right.status)) : String(left.dueAt || '9999-12-31').localeCompare(String(right.dueAt || '9999-12-31')));
+  return <div className="crm-module"><header className="crm-module-heading"><div><p className="crm-eyebrow">Account work</p><h1>Tasks</h1><p>Tasks are durable, account-linked follow-ups. Creation and completion record through the owning account so the activity timeline remains authoritative.</p></div><label className="crm-search-box"><span>Search tasks</span><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Task, account, or assignee" /></label></header><SavedViews views={['Open tasks', 'Completed tasks', 'All tasks']} active={view} onChange={setView} /><Panel title={busy ? 'Loading tasks…' : `${filtered.length} tasks`} action={<ListToolbar count={filtered.length} selectedCount={0} sort={sort} setSort={setSort} onClearSelection={() => {}} />}>{busy && !tasks.length ? <LoadingState label="Loading account-linked tasks…" /> : sorted.length ? <div className="crm-table-wrap"><table className="crm-table"><thead><tr><th>Task</th><th>Account</th><th>Assignee</th><th>Due</th><th>Status</th></tr></thead><tbody>{sorted.map((task) => <tr key={task.key}><td><button type="button" className="crm-record-link" onClick={() => open('task', task.key)}>{task.title}</button></td><td>{task.accountName}</td><td>{task.owner || 'Unassigned'}</td><td>{shortDate(task.dueAt, 'No due date')}</td><td><StatusChip tone={task.status === 'open' ? 'amber' : 'green'}>{label(task.status, 'Open')}</StatusChip></td></tr>)}</tbody></table></div> : <EmptyState title="No tasks in this view">Open an account to create an account-linked follow-up. The current service exposes no bulk task editing or reassignment action.</EmptyState>}</Panel></div>;
+}
+function calendarDateKey(value) { const date = value ? new Date(value) : null; return date && !Number.isNaN(date.getTime()) ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` : null; }
+function calendarStart(date, unit) { const result = new Date(date); result.setHours(0, 0, 0, 0); if (unit === 'week') result.setDate(result.getDate() - result.getDay()); if (unit === 'month') { result.setDate(1); result.setDate(result.getDate() - result.getDay()); } return result; }
+function addCalendarDays(date, amount) { const result = new Date(date); result.setDate(result.getDate() + amount); return result; }
+function CalendarModule({ tasks, accounts, busy, command, open }) {
+  const [view, setView] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 560px)').matches ? 'agenda' : 'month');
+  const [anchor, setAnchor] = useState(() => new Date());
+  const [showCreate, setShowCreate] = useState(false);
+  const visibleStart = calendarStart(anchor, view);
+  const visibleDays = view === 'day' ? 1 : view === 'week' ? 7 : 42;
+  const days = Array.from({ length: visibleDays }, (_, index) => addCalendarDays(visibleStart, index));
+  const scheduled = tasks.filter((task) => task.dueAt);
+  const rangeLabel = view === 'day' ? anchor.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : view === 'week' ? `${shortDate(days[0])} – ${shortDate(days.at(-1))}` : anchor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  const changeAnchor = (direction) => setAnchor((current) => addCalendarDays(current, direction * (view === 'day' ? 1 : view === 'week' ? 7 : 28)));
+  const tasksForDay = (day) => scheduled.filter((task) => calendarDateKey(task.dueAt) === calendarDateKey(day));
+  const agenda = [...scheduled].sort((left, right) => String(left.dueAt).localeCompare(String(right.dueAt)));
+  return <div className="crm-module"><header className="crm-module-heading"><div><p className="crm-eyebrow">Account work schedule</p><h1>Calendar</h1><p>Only account-linked tasks with recorded due dates appear here. Calls and meetings remain unavailable until the CRM service exposes authoritative records.</p></div><button className="crm-primary" type="button" disabled={!accounts.length} onClick={() => setShowCreate(!showCreate)}>+ Task</button></header>
+    {showCreate && <form className="crm-inline-form crm-calendar-create" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); const dueAt = asIsoDate(form.get('dueAt')); command('create_task', { accountKey: form.get('accountKey'), title: form.get('title'), dueAt }).then((result) => result && setShowCreate(false)); }}><label>Account<select name="accountKey" required defaultValue=""><option value="" disabled>Select an account</option>{accounts.map((account) => <option key={account.key} value={account.key}>{account.name}</option>)}</select></label><label>Task<input name="title" required maxLength="240" placeholder="Account follow-up" /></label><label>Due date<input name="dueAt" type="datetime-local" required /></label><button className="crm-primary" disabled={busy}>Create task</button><p className="crm-muted-copy">This creates an internal account task only; it does not invite, transmit, or schedule an external call or meeting.</p></form>}
+    <section className="crm-calendar-controls" aria-label="Calendar controls"><div className="crm-button-row"><button className="crm-text-button" type="button" onClick={() => changeAnchor(-1)}>Previous</button><button className="crm-text-button" type="button" onClick={() => setAnchor(new Date())}>Today</button><button className="crm-text-button" type="button" onClick={() => changeAnchor(1)}>Next</button></div><strong aria-live="polite">{rangeLabel}</strong><SavedViews views={['day', 'week', 'month', 'agenda']} active={view} onChange={setView} /></section>
+    {busy && !tasks.length ? <LoadingState label="Loading permitted calendar records…" /> : view === 'agenda' ? <Panel title="Agenda"><p className="crm-muted-copy">Tasks without a due date remain in Tasks and are not placed on a date.</p>{agenda.length ? <ol className="crm-calendar-agenda">{agenda.map((task) => <li key={task.key}><time dateTime={task.dueAt}>{formatDate(task.dueAt)}</time><button type="button" className="crm-record-link" onClick={() => open('task', task.key)}>{task.title}</button><small>{task.accountName} · {task.owner || 'Unassigned'}</small></li>)}</ol> : <EmptyState title="No scheduled tasks">Create an account-linked task with a due date to add it to this calendar. Calls and meetings are unavailable, not hidden.</EmptyState>}</Panel> : <Panel title={`${view[0].toUpperCase()}${view.slice(1)} schedule`}><div className={`crm-calendar-grid crm-calendar-view-${view}`}>{view !== 'day' && ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span className="crm-calendar-weekday" key={day}>{day}</span>)}{days.map((day) => { const dayTasks = tasksForDay(day); const inAnchorMonth = day.getMonth() === anchor.getMonth(); return <article className={`crm-calendar-day${inAnchorMonth ? '' : ' is-outside-month'}`} key={day.toISOString()}><header><time dateTime={calendarDateKey(day)}>{day.getDate()}</time><span>{shortDate(day)}</span></header>{dayTasks.map((task) => <button className="crm-calendar-event" type="button" key={task.key} onClick={() => open('task', task.key)}><strong>{task.title}</strong><small>{task.accountName} · {shortDate(task.dueAt)}</small></button>)}{!dayTasks.length && <p className="crm-calendar-empty-day">No scheduled tasks</p>}</article>; })}</div>{!scheduled.length && <EmptyState title="No scheduled records">The authenticated task directory returned no due-dated tasks. Calls and meetings have no authoritative calendar contract, so they are not fabricated here.</EmptyState>}</Panel>}
+    <Panel title="Unavailable calendar record types"><div className="crm-calendar-unavailable"><section><strong>Calls</strong><p>No call records, scheduling, logs, invitees, or transmission contract is available.</p></section><section><strong>Meetings</strong><p>No meeting records, scheduling, invitations, or external transmission contract is available.</p></section></div></Panel>
+  </div>;
+}
+function TaskRecord({ detail, busy, command, open, back }) {
+  const { task, account, activities } = detail;
+  return <div className="crm-record"><button className="crm-breadcrumb" type="button" onClick={back}>← Tasks</button><header className="crm-record-header"><div><p className="crm-eyebrow">Task</p><h1>{task.title}</h1><div className="crm-record-subline"><StatusChip tone={task.status === 'open' ? 'amber' : 'green'}>{label(task.status, 'Open')}</StatusChip><span>Account-linked follow-up</span></div></div><div className="crm-record-header-actions"><section className="crm-next-action-card"><span>Due / assignee</span><strong>{shortDate(task.dueAt, 'No due date')} · {task.owner || 'Unassigned'}</strong><small>Editing or reassignment is unavailable until the CRM service exposes an authoritative command.</small></section></div></header><div className="crm-record-layout"><div><Panel title="Task details"><dl className="crm-side-details"><div><dt>State</dt><dd>{label(task.status, 'Open')}</dd></div><div><dt>Due date</dt><dd>{formatDate(task.dueAt, 'No due date')}</dd></div><div><dt>Assignee</dt><dd>{task.owner || 'Unassigned'}</dd></div></dl>{task.status === 'open' && <button className="crm-primary" type="button" disabled={busy} onClick={() => command('complete_task', { accountKey: task.accountKey, taskKey: task.key })}>Complete task</button>}</Panel><Panel title="Activity timeline"><p className="crm-muted-copy">This task has no separate activity stream; the owning account’s append-only timeline provides the related operational history.</p><ActivityList activities={activities} /></Panel></div><aside><Panel title="Relationship"><button type="button" className="crm-record-link" onClick={() => open('account', task.accountKey)}>{account.name}</button><p className="crm-muted-copy">Tasks remain owned by this account. They do not create contact approval, campaign membership, or outbound authority.</p></Panel></aside></div></div>;
+}
+function EmailsModule({ emails, busy, search, setSearch, open }) {
+  const [view, setView] = useState('All governed drafts');
+  const filtered = emails.filter((email) => view === 'Approved drafts' ? email.approval === 'approved' : view === 'Pending review' ? email.approval !== 'approved' : true);
+  return <div className="crm-module"><header className="crm-module-heading"><div><p className="crm-eyebrow">Draft-governed correspondence</p><h1>Emails</h1><p>Email records mirror draft revisions from email campaigns. They are preview-only records; mailbox synchronization, sending, and external dispatch are unavailable.</p></div><label className="crm-search-box"><span>Search emails</span><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Recipient, account, or campaign" /></label></header><SavedViews views={['All governed drafts', 'Approved drafts', 'Pending review']} active={view} onChange={setView} /><Panel title={busy ? 'Loading governed email drafts…' : `${filtered.length} email drafts`} action={<ListToolbar count={filtered.length} selectedCount={0} sort="updated" setSort={() => {}} onClearSelection={() => {}} />}>{busy && !emails.length ? <LoadingState label="Loading email drafts from authorized campaign work…" /> : filtered.length ? <div className="crm-table-wrap"><table className="crm-table"><thead><tr><th>Recipient</th><th>Account</th><th>Campaign</th><th>Revision</th><th>Draft review</th><th>Recorded</th></tr></thead><tbody>{filtered.map((email) => <tr key={email.key}><td><button className="crm-record-link" type="button" onClick={() => open('email', email.key)}>{email.recipientName}</button><br /><span className="crm-muted-copy">{email.recipientEmail || 'No email address recorded'}</span></td><td>{email.accountName}</td><td><button className="crm-record-link" type="button" onClick={() => open('campaign', email.campaignKey)}>{email.campaignName}</button></td><td>Revision {email.revision || '—'}</td><td><StatusChip tone={email.approval === 'approved' ? 'green' : 'amber'}>{label(email.approval, 'Pending review')}</StatusChip></td><td>{shortDate(email.createdAt)}</td></tr>)}</tbody></table></div> : <EmptyState title="No email draft records match this view">Email records appear only when an authorized email campaign has a persisted draft revision. The workspace does not infer mailbox activity or create delivery records.</EmptyState>}</Panel></div>;
+}
+function EmailTemplatesModule({ templates, busy, search, setSearch, open }) {
+  const [view, setView] = useState('All draft revisions');
+  const filtered = templates.filter((template) => view === 'Approved revisions' ? template.approval === 'approved' : view === 'Pending review' ? template.approval !== 'approved' : true);
+  return <div className="crm-module"><header className="crm-module-heading"><div><p className="crm-eyebrow">Draft library</p><h1>Email Templates</h1><p>Template views expose reusable-looking email draft revisions with their exact campaign and review context. Creating, editing, publishing, or dispatching templates is unavailable until the CRM service exposes a dedicated template contract.</p></div><label className="crm-search-box"><span>Search templates</span><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Campaign, recipient, or draft text" /></label></header><SavedViews views={['All draft revisions', 'Approved revisions', 'Pending review']} active={view} onChange={setView} /><Panel title={busy ? 'Loading draft-backed templates…' : `${filtered.length} template records`} action={<ListToolbar count={filtered.length} selectedCount={0} sort="updated" setSort={() => {}} onClearSelection={() => {}} />}>{busy && !templates.length ? <LoadingState label="Loading governed template records…" /> : filtered.length ? <div className="crm-table-wrap"><table className="crm-table"><thead><tr><th>Template record</th><th>Campaign</th><th>Revision</th><th>Review</th><th>Preview</th></tr></thead><tbody>{filtered.map((template) => <tr key={template.key}><td><button className="crm-record-link" type="button" onClick={() => open('template', template.key)}>{template.name}</button></td><td><button className="crm-record-link" type="button" onClick={() => open('campaign', template.campaignKey)}>{template.campaignName}</button></td><td>{template.revision || '—'}</td><td><StatusChip tone={template.approval === 'approved' ? 'green' : 'amber'}>{label(template.approval, 'Pending review')}</StatusChip></td><td className="crm-template-snippet">{template.body || 'No draft text recorded'}</td></tr>)}</tbody></table></div> : <EmptyState title="No draft-backed template records match this view">A template requires a persisted email-campaign draft revision. This is not a separate template store and cannot publish or deliver content.</EmptyState>}</Panel></div>;
+}
+function EmailRecord({ detail, tab, setTab, open, back }) { const email = detail.email; return <div className="crm-record"><button className="crm-breadcrumb" type="button" onClick={back}>← Emails</button><header className="crm-record-header"><div><p className="crm-eyebrow">Email draft record</p><h1>{email.recipientName}</h1><div className="crm-record-subline"><StatusChip tone={email.approval === 'approved' ? 'green' : 'amber'}>{label(email.approval, 'Pending review')}</StatusChip><span>{email.campaignName} · revision {email.revision || '—'}</span></div></div><div className="crm-record-header-actions"><section className="crm-next-action-card"><span>Availability</span><strong>Preview only</strong><small>No mailbox synchronization, delivery, or external dispatch capability</small></section></div></header><RecordTabs names={EMAIL_TABS} active={tab} setActive={setTab} />{tab === 'Overview' && <div className="crm-record-layout"><div><Panel title="Email record"><dl className="crm-side-details"><div><dt>Recipient</dt><dd>{email.recipientName}</dd></div><div><dt>Email address</dt><dd>{email.recipientEmail || 'Not recorded'}</dd></div><div><dt>Campaign</dt><dd>{email.campaignName}</dd></div><div><dt>Draft revision</dt><dd>{email.revision || 'Not recorded'}</dd></div></dl></Panel></div><aside><Panel title="Draft audit"><dl className="crm-side-details"><div><dt>Review state</dt><dd>{label(email.approval, 'Pending')}</dd></div><div><dt>Recorded</dt><dd>{formatDate(email.createdAt)}</dd></div><div><dt>Delivery</dt><dd>Unavailable — no mailbox record</dd></div></dl></Panel></aside></div>}{tab === 'Preview' && <Panel title="Draft preview"><pre className="crm-email-preview">{email.body || 'No draft text was recorded for this revision.'}</pre><p className="crm-muted-copy">Preview preserves the persisted draft revision only. It is not a compose, mailbox, or delivery surface.</p></Panel>}{tab === 'Relationships' && <Panel title="Related CRM records"><div className="crm-button-row"><button className="crm-record-link" type="button" onClick={() => open('campaign', email.campaignKey)}>{email.campaignName}</button>{email.contactKey && <button className="crm-record-link" type="button" onClick={() => open('contact', email.contactKey)}>{email.recipientName}</button>}</div><p className="crm-muted-copy">The email draft remains bound to its campaign member and does not authorize a different contact, campaign, or delivery attempt.</p></Panel>}{tab === 'Audit context' && <Panel title="Audit context"><p className="crm-muted-copy">This record was derived server-side from the authenticated campaign workspace. It exposes signed opaque relationships and the stored revision, review state, and recorded timestamp only.</p></Panel>}</div>; }
+function EmailTemplateRecord({ detail, tab, setTab, open, back }) { const template = detail.template; return <div className="crm-record"><button className="crm-breadcrumb" type="button" onClick={back}>← Email Templates</button><header className="crm-record-header"><div><p className="crm-eyebrow">Draft-backed template</p><h1>{template.name}</h1><div className="crm-record-subline"><StatusChip tone={template.approval === 'approved' ? 'green' : 'amber'}>{label(template.approval, 'Pending review')}</StatusChip><span>{template.campaignName} · revision {template.revision || '—'}</span></div></div><div className="crm-record-header-actions"><section className="crm-next-action-card"><span>Availability</span><strong>Read-only draft revision</strong><small>No template publishing, editing, or external dispatch capability</small></section></div></header><RecordTabs names={EMAIL_TABS} active={tab} setActive={setTab} />{tab === 'Overview' && <Panel title="Template context"><dl className="crm-side-details"><div><dt>Campaign</dt><dd>{template.campaignName}</dd></div><div><dt>Recipient context</dt><dd>{template.recipientName}</dd></div><div><dt>Revision</dt><dd>{template.revision || 'Not recorded'}</dd></div><div><dt>Review state</dt><dd>{label(template.approval, 'Pending')}</dd></div></dl></Panel>}{tab === 'Preview' && <Panel title="Revision preview"><pre className="crm-email-preview">{template.body || 'No draft text was recorded for this revision.'}</pre></Panel>}{tab === 'Relationships' && <Panel title="Related CRM records"><div className="crm-button-row"><button className="crm-record-link" type="button" onClick={() => open('campaign', template.campaignKey)}>{template.campaignName}</button>{template.contactKey && <button className="crm-record-link" type="button" onClick={() => open('contact', template.contactKey)}>{template.recipientName}</button>}</div></Panel>}{tab === 'Audit context' && <Panel title="Audit context"><p className="crm-muted-copy">Template records are intentionally aliases of persisted campaign draft revisions. The CRM service has no separate template entity, so this view cannot create, edit, publish, or apply a template outside its source revision.</p></Panel>}</div>; }
+function DocumentUnavailableModule({ kind }) {
+  const isKnowledgeBase = kind === 'Knowledge Base';
+  const noun = isKnowledgeBase ? 'knowledge articles' : 'documents';
+  const classification = isKnowledgeBase ? 'Categories' : 'Folders';
+  const action = isKnowledgeBase ? 'Create article' : 'Upload or link document';
+  return <div className="crm-module"><header className="crm-module-heading"><div><p className="crm-eyebrow">Authorized tenant content</p><h1>{kind}</h1><p>{isKnowledgeBase ? 'Knowledge articles, categories, and related-record panels remain unavailable until the CRM service provides an authenticated tenant-scoped knowledge-base contract.' : 'Document records, folders, relationship panels, and file/link metadata remain unavailable until the CRM service provides an authenticated tenant-scoped document contract.'}</p></div><button className="crm-primary" type="button" disabled title="No authorized document service is configured">{action}</button></header><div className="crm-document-grid"><Panel title={`${classification} and lists`}><label className="crm-search-box"><span>Search {noun}</span><input type="search" disabled placeholder={`No authorized ${noun} are available`} /></label><EmptyState title={`No ${noun} available`}>No authenticated document or knowledge-base directory is exposed by the CRM service. This screen does not infer folders, categories, or records from account activity.</EmptyState></Panel><Panel title="Record details and relationships"><dl className="crm-side-details"><div><dt>Record detail</dt><dd>Unavailable — no authorized record handle</dd></div><div><dt>Account relationship</dt><dd>Unavailable — no tenant-scoped document relationship contract</dd></div><div><dt>Campaign relationship</dt><dd>Unavailable — no tenant-scoped document relationship contract</dd></div></dl><p className="crm-muted-copy">No file content, external URL, or metadata is fetched or exposed without a server-authorized opaque record handle.</p></Panel></div><Panel title="Authorized upload / link metadata"><p className="crm-muted-copy">The portal does not accept files, URLs, or metadata until the CRM service can verify the staff identity, tenant ownership, permitted relationship, storage policy, and opaque record scope. Uploads and external links are intentionally disabled rather than stored locally or sent to an unscoped endpoint.</p><div className="crm-document-controls"><button className="crm-check-button" type="button" disabled>Choose file</button><button className="crm-check-button" type="button" disabled>Add authorized link metadata</button><span>Unavailable — tenant-scoped document authorization is not configured.</span></div></Panel></div>;
+}
+function DocumentsModule() { return <DocumentUnavailableModule kind="Documents" />; }
+function KnowledgeBaseModule() { return <DocumentUnavailableModule kind="Knowledge Base" />; }
+function AdministrationModule() {
+  const [section, setSection] = useState('Users');
+  const sections = {
+    Users: { title: 'Users', scope: 'User directory, activation, and access assignments', impact: 'Adding, disabling, or changing a user can alter access to CRM records and manual campaign work.' },
+    Teams: { title: 'Teams', scope: 'Team membership, ownership, and work assignment', impact: 'Team membership can change which operators can see or be assigned work.' },
+    'Roles & ACL': { title: 'Roles & ACL', scope: 'Role definitions, permissions, and access-control rules', impact: 'Permission changes can expand or remove access to client records and governed actions.' },
+    'Entity Configuration': { title: 'Entity Configuration', scope: 'Entity fields, relationships, layouts, and retention configuration', impact: 'Configuration changes can affect record integrity, visibility, and downstream workflows.' },
+    Settings: { title: 'Settings', scope: 'Tenant, workspace, integration, and notification settings', impact: 'Settings changes can alter tenant behavior or integrations.' },
+  };
+  const current = sections[section];
+  return <div className="crm-module"><header className="crm-module-heading"><div><p className="crm-eyebrow">Administration</p><h1>Administration</h1><p>Administrative views are available only inside the authenticated CRM workspace. Access-control and configuration changes remain fail closed until a server-authorized contract provides attributable authority, impact review, and audit evidence.</p></div><StatusChip tone="amber">Read-only boundary</StatusChip></header><div className="crm-record-layout"><aside><Panel title="Administrative areas"><nav className="crm-record-tabs" aria-label="Administration sections">{Object.keys(sections).map((name) => <button type="button" className={section === name ? 'is-active' : ''} key={name} onClick={() => setSection(name)}>{name}</button>)}</nav></Panel></aside><div><Panel title={current.title}><p>{current.scope} are not returned by the current authenticated CRM service contract.</p><dl className="crm-side-details"><div><dt>Authority</dt><dd>Unavailable — no server-verified administrator, tenant, or role-management command</dd></div><div><dt>Impact preview</dt><dd>{current.impact}</dd></div><div><dt>Audit evidence</dt><dd>Unavailable — no append-only administration audit record is exposed</dd></div><div><dt>Change state</dt><dd>Not authorized — no mutation is attempted from this screen</dd></div></dl></Panel><Panel title="Required change controls"><ol className="crm-admin-controls"><li>Verify the acting administrator and tenant scope on the server.</li><li>Preview the affected users, records, permissions, and integration consequences.</li><li>Require an explicit, attributable confirmation for the exact reviewed change.</li><li>Persist and return immutable audit evidence before reporting success.</li></ol><p className="crm-muted-copy">Until all controls are supported by an authoritative backend contract, this workspace cannot create users or teams, change roles/ACL, alter entity configuration, or save settings.</p><div className="crm-document-controls"><button className="crm-primary" type="button" disabled title="No authorized administration command is configured">Review and apply change</button><button className="crm-text-button" type="button" disabled title="No authorized administration audit contract is configured">View audit evidence</button></div></Panel></div></div></div>;
+}
+function UnavailableActivityModule({ kind }) { return <div className="crm-module"><header className="crm-module-heading"><div><p className="crm-eyebrow">Activity type</p><h1>{kind}</h1><p>{kind} are intentionally unavailable in this CRM workspace because the authoritative service exposes no {kind.toLowerCase()} record, scheduling, logging, or mutation contract.</p></div></header><EmptyState title={`No ${kind.toLowerCase()} records available`}>The workspace does not fabricate call or meeting records, invitees, assignees, dates, completion state, or timeline entries. Use account tasks and notes for the supported manual work loop; external transmission remains unavailable.</EmptyState></div>; }
+function ActivitiesModule({ activities }) { return <div className="crm-module"><header className="crm-module-heading"><div><p className="crm-eyebrow">History</p><h1>Activities</h1><p>A single chronological stream of durable notes, task changes, reviews, and manual outcomes.</p></div></header>{activities.length ? <ActivityList activities={activities} /> : <EmptyState title="Open a record to review activity">The activity timeline is available on every account and campaign record.</EmptyState>}</div>; }
+function reportFreshness(accounts, campaigns) {
+  const timestamps = [...accounts, ...campaigns].map((item) => item.updatedAt).filter(Boolean).map((value) => new Date(value).getTime()).filter(Number.isFinite);
+  return timestamps.length ? new Date(Math.max(...timestamps)).toISOString() : null;
+}
+function operationalReports(accounts, campaigns) {
+  const pending = accounts.filter((account) => account.status === 'pending');
+  const missingNextAction = accounts.filter((account) => !account.nextAction || account.nextAction === 'Open account');
+  const activeCampaigns = campaigns.filter((campaign) => campaign.status === 'approved' || campaign.status === 'active');
+  return [
+    { id: 'account-work', name: 'Account work exceptions', audience: 'Account operators', value: pending.length + missingNextAction.length, detail: 'Accounts requiring review or a recorded next action.', rows: [...pending.map((account) => ({ name: account.name, state: 'Pending review', updatedAt: account.updatedAt })), ...missingNextAction.filter((account) => !pending.includes(account)).map((account) => ({ name: account.name, state: 'Missing next action', updatedAt: account.updatedAt }))] },
+    { id: 'campaign-readiness', name: 'Campaign readiness', audience: 'Campaign operators', value: activeCampaigns.length, detail: 'Approved or active manual campaigns in the authenticated campaign directory.', rows: activeCampaigns.map((campaign) => ({ name: campaign.name, state: label(campaign.status), updatedAt: campaign.updatedAt })) },
+  ];
+}
+function ReportsModule({ accounts, campaigns }) {
+  const [selectedReport, setSelectedReport] = useState(null);
+  const [scope, setScope] = useState('All records');
+  const [ranAt, setRanAt] = useState(null);
+  const reports = operationalReports(accounts, campaigns);
+  const report = reports.find((item) => item.id === selectedReport);
+  const freshness = reportFreshness(accounts, campaigns);
+  const rows = report?.rows.filter((row) => scope === 'All records' || row.state === scope) || [];
+  const scopes = ['All records', ...new Set(report?.rows.map((row) => row.state) || [])];
+  if (report) return <div className="crm-record"><button className="crm-breadcrumb" type="button" onClick={() => setSelectedReport(null)}>← Reports</button><header className="crm-record-header"><div><p className="crm-eyebrow">Read-only operational report</p><h1>{report.name}</h1><p>{report.detail}</p></div><div className="crm-record-header-actions"><section className="crm-next-action-card"><span>Source freshness</span><strong>{formatDate(freshness, 'No source timestamp returned')}</strong><small>Authenticated account and campaign directories</small></section></div></header><Panel title="Filters and run"><div className="crm-button-row"><label>State <select value={scope} onChange={(event) => setScope(event.target.value)}>{scopes.map((option) => <option key={option}>{option}</option>)}</select></label><button className="crm-primary" type="button" onClick={() => setRanAt(new Date().toISOString())}>Run report</button><button className="crm-text-button" type="button" disabled title="No authorized export contract is available">Export unavailable</button></div><p className="crm-muted-copy">Filters and run are local read-only views over the already authorized directory data. {ranAt ? `Last run ${formatDate(ranAt)}.` : 'Run the report to mark this local view refreshed.'} Export remains disabled because no tenant-scoped export contract exists.</p></Panel><Panel title={`${rows.length} matching records`}><div className="crm-table-wrap"><table className="crm-table"><thead><tr><th>Record</th><th>Operational state</th><th>Last updated</th></tr></thead><tbody>{rows.map((row) => <tr key={`${row.name}-${row.state}`}><td>{row.name}</td><td><StatusChip tone={row.state === 'Pending review' ? 'amber' : 'neutral'}>{row.state}</StatusChip></td><td>{formatDate(row.updatedAt)}</td></tr>)}</tbody></table></div>{!rows.length && <EmptyState title="No records match this report filter">The authorized directory returned no records in this state.</EmptyState>}</Panel><Panel title="Report boundary"><p className="crm-muted-copy">This report measures recorded operating states only. It does not infer conversion, revenue, delivery outcome, ownership, or customer impact from missing data.</p></Panel></div>;
+  return <div className="crm-module"><header className="crm-module-heading"><div><p className="crm-eyebrow">Operational reports</p><h1>Reports</h1><p>Read-only report definitions derived from the authenticated account and campaign directories.</p></div><div className="crm-freshness">Source freshness: {formatDate(freshness, 'No source timestamp returned')}</div></header><Panel title="Report library"><div className="crm-table-wrap"><table className="crm-table"><thead><tr><th>Report</th><th>Audience</th><th>Recorded measure</th><th>Availability</th></tr></thead><tbody>{reports.map((item) => <tr key={item.id}><td><button type="button" className="crm-record-link" onClick={() => { setScope('All records'); setSelectedReport(item.id); }}>{item.name}</button><br /><span className="crm-muted-copy">{item.detail}</span></td><td>{item.audience}</td><td>{item.value}</td><td><StatusChip>Read-only</StatusChip></td></tr>)}</tbody></table></div></Panel><Panel title="Data scope"><p className="crm-muted-copy">Task completion, outcomes, owner-level rollups, revenue, and trend analytics are unavailable until an authoritative global reporting contract exposes them. This library does not fabricate those metrics.</p></Panel></div>;
+}
+function DashboardsModule({ accounts, campaigns }) {
+  const freshness = reportFreshness(accounts, campaigns);
+  const pending = accounts.filter((account) => account.status === 'pending').length;
+  const missingNextAction = accounts.filter((account) => !account.nextAction || account.nextAction === 'Open account').length;
+  const activeCampaigns = campaigns.filter((campaign) => campaign.status === 'approved' || campaign.status === 'active').length;
+  return <div className="crm-module"><header className="crm-module-heading"><div><p className="crm-eyebrow">Operational dashboard</p><h1>Dashboards</h1><p>A read-only view of recorded work signals, not a forecast or performance claim.</p></div><div className="crm-freshness">Source freshness: {formatDate(freshness, 'No source timestamp returned')}</div></header><div className="crm-kpi-grid"><Kpi label="Accounts awaiting review" value={pending} tone="amber" /><Kpi label="Accounts missing next action" value={missingNextAction} tone="red" /><Kpi label="Approved / active campaigns" value={activeCampaigns} tone="green" /><Kpi label="Accounts in directory" value={accounts.length} /></div><div className="crm-home-grid"><Panel title="Value Intended"><p>Every qualified account has a clear next action, and manual campaign work remains reviewable before a human outcome is recorded.</p><p className="crm-muted-copy">This is a stated operating standard, not a measured outcome.</p></Panel><Panel title="Value Practiced"><p>{pending} account{pending === 1 ? '' : 's'} are currently recorded as pending review and {missingNextAction} account{missingNextAction === 1 ? '' : 's'} lack a recorded next action.</p><p className="crm-muted-copy">These are current directory states; no conclusion about team performance, revenue, or client impact is implied.</p></Panel></div><Panel title="Provenance and limits"><dl className="crm-side-details"><div><dt>Provenance</dt><dd>Authenticated account and campaign directory read models</dd></div><div><dt>Freshness</dt><dd>{formatDate(freshness, 'No timestamp returned')}</dd></div><div><dt>Not available</dt><dd>Revenue, conversion, outcome, owner, and historical trend analytics</dd></div></dl></Panel></div>;
 }
 
-function IcpBrief() {
-  return <details className="crm-record-details" open><summary>Weekly call focus</summary><p><strong>{TAX_FIRM_WEEKLY_CALL_ICP.employeeCount.label}</strong> · <strong>{TAX_FIRM_WEEKLY_CALL_ICP.revenueCapacityHypothesis.label}</strong></p><p>{TAX_FIRM_WEEKLY_CALL_ICP.evidenceRequirement}</p><ul>{TAX_FIRM_WEEKLY_CALL_ICP.workflow.map((step) => <li key={step}>{step}</li>)}</ul></details>;
+function AccountRecord({ detail, accountKey, tab, setTab, command, busy, open, onUnavailable, back }) { const account = detail.account; const openTasks = detail.tasks.filter((task) => task.status === 'open'); return <div className="crm-record"><button className="crm-breadcrumb" type="button" onClick={back}>← Accounts</button><header className="crm-record-header"><div><p className="crm-eyebrow">Account</p><h1>{account.name}</h1><div className="crm-record-subline"><StatusChip tone={account.status === 'approved' ? 'green' : 'amber'}>{label(account.status)}</StatusChip><span>Last updated {shortDate(account.updatedAt)}</span></div></div><div className="crm-record-header-actions"><NextAction detail={detail} /><RecordActionMenu onUnavailable={onUnavailable} /></div></header><RecordTabs names={ACCOUNT_TABS} active={tab} setActive={setTab} />
+    {tab === 'Overview' && <div className="crm-record-layout"><div><Panel title="Account overview"><dl className="crm-side-details"><div><dt>Stage</dt><dd>{label(account.status)}</dd></div><div><dt>Next action</dt><dd>{detail.nextAction?.label || 'No follow-up scheduled'}</dd></div><div><dt>Owner</dt><dd>{detail.nextAction?.owner || 'Unassigned'}</dd></div><div><dt>Due date</dt><dd>{shortDate(detail.nextAction?.dueAt, 'No due date')}</dd></div></dl></Panel><Panel title="Open follow-ups"><TaskPanel tasks={openTasks} accountKey={accountKey} command={command} busy={busy} open={open} /></Panel></div><aside><Panel title="Related records"><dl className="crm-side-details"><div><dt>Contacts</dt><dd>{detail.contacts.length}</dd></div><div><dt>Activities</dt><dd>{detail.activities.length}</dd></div><div><dt>Campaign memberships</dt><dd>Open the Campaigns tab</dd></div></dl></Panel><AccountSideRail detail={detail} accountKey={accountKey} command={command} busy={busy} /></aside></div>}
+    {tab === 'Activity' && <div className="crm-record-layout"><div><ActivityComposer accountKey={accountKey} command={command} busy={busy} /><Panel title="Activity"><ActivityList activities={detail.activities} /></Panel></div><aside><TaskPanel tasks={openTasks} accountKey={accountKey} command={command} busy={busy} open={open} /><AccountSideRail detail={detail} accountKey={accountKey} command={command} busy={busy} /></aside></div>}
+    {tab === 'People' && <PeoplePanel detail={detail} accountKey={accountKey} command={command} busy={busy} open={open} />}
+    {tab === 'Tasks' && <Panel title="Tasks"><TaskPanel tasks={detail.tasks} accountKey={accountKey} command={command} busy={busy} open={open} expanded /></Panel>}
+    {tab === 'Campaigns' && <Panel title="Campaign memberships"><EmptyState title="No campaign memberships returned for this account">The current account read contract does not expose campaign membership records. Open Campaigns to manage the weekly call queue without inferring a relationship.</EmptyState></Panel>}
+    {tab === 'Opportunities' && <Panel title="Opportunities"><EmptyState title="No opportunity records available">The current CRM service does not expose account opportunities. This workspace does not invent pipeline records.</EmptyState></Panel>}
+    {tab === 'Details' && <DetailsPanel detail={detail} accountKey={accountKey} command={command} busy={busy} />}
+  </div>; }
+function NextAction({ detail }) { return <section className="crm-next-action-card"><span>Next action</span><strong>{detail.nextAction?.label || 'No follow-up scheduled'}</strong><small>{detail.nextAction?.owner || 'Unassigned'} · {shortDate(detail.nextAction?.dueAt, 'No due date')}</small></section>; }
+function RecordTabs({ names, active, setActive }) { return <nav className="crm-record-tabs" aria-label="Record sections">{names.map((name) => <button type="button" className={name === active ? 'is-active' : ''} key={name} onClick={() => setActive(name)}>{name}</button>)}</nav>; }
+function ActivityComposer({ accountKey, command, busy }) { return <Panel title="Add activity" className="crm-composer-panel"><form className="crm-activity-composer" onSubmit={(event) => { event.preventDefault(); const note = new FormData(event.currentTarget).get('note'); command('create_note', { accountKey, note }).then((result) => result && event.currentTarget.reset()); }}><textarea name="note" required maxLength="4000" placeholder="Add an internal note for the team…" /><button className="crm-primary" disabled={busy}>Add note</button></form></Panel>; }
+function ActivityList({ activities }) { return activities?.length ? <ol className="crm-activity-list">{activities.map((activity, index) => <li key={`${activity.occurredAt}-${index}`}><span className="crm-activity-dot" /><div><strong>{label(activity.type, 'CRM update')}</strong>{activity.body && <p>{activity.body}</p>}<small>{activity.actor || 'CRM'} · {formatDate(activity.occurredAt)}</small></div></li>)}</ol> : <p className="crm-muted-copy">No activity has been recorded yet.</p>; }
+function TaskPanel({ tasks, accountKey, command, busy, open, expanded = false }) { const [adding, setAdding] = useState(false); return <Panel title={expanded ? 'All tasks' : `Open tasks (${tasks.length})`} action={<button className="crm-text-button" type="button" onClick={() => setAdding(!adding)}>+ Task</button>}>{tasks.length ? <ul className="crm-task-list">{tasks.map((task) => <li key={task.key}><div>{open ? <button type="button" className="crm-record-link" onClick={() => open('task', task.key)}>{task.title}</button> : <strong>{task.title}</strong>}<small>{task.owner || 'Unassigned'} · {shortDate(task.dueAt, 'No due date')}</small></div>{task.status === 'open' && <button className="crm-check-button" type="button" disabled={busy} onClick={() => command('complete_task', { accountKey, taskKey: task.key })}>Complete</button>}</li>)}</ul> : <p className="crm-muted-copy">No tasks are open.</p>}{adding && <form className="crm-task-form" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); command('create_task', { accountKey, title: form.get('title'), dueAt: asIsoDate(form.get('dueAt')) }).then((result) => result && setAdding(false)); }}><input name="title" required placeholder="Task title" /><input name="dueAt" type="datetime-local" /><button className="crm-primary" disabled={busy}>Create task</button></form>}</Panel>; }
+function AccountSideRail({ detail, accountKey, command, busy }) { return <Panel title="Account details"><dl className="crm-side-details"><div><dt>Owner</dt><dd>{detail.nextAction?.owner || 'Unassigned'}</dd></div><div><dt>Stage</dt><dd>{label(detail.account.status)}</dd></div><div><dt>Next action</dt><dd>{detail.nextAction?.label || 'No follow-up scheduled'}</dd></div><div><dt>People</dt><dd>{detail.contacts.length}</dd></div></dl>{detail.recordDetails.reviewStatus !== 'approved' && <button className="crm-review-button" type="button" disabled={busy} onClick={() => command('account_approval', { accountKey, decision: 'approved' })}>Review account</button>}</Panel>; }
+function PeoplePanel({ detail, accountKey, command, busy, open }) {
+  const accountApproved = detail.recordDetails.reviewStatus === 'approved';
+  return <Panel title="People" action={<StatusChip>{detail.contacts.length} related</StatusChip>}><div className="crm-table-wrap"><table className="crm-table"><thead><tr><th>Person</th><th>Role</th><th>Contact state</th><th>Actions</th></tr></thead><tbody>{detail.contacts.map((person) => {
+    const terminalSuppression = person.disposition === 'do_not_contact';
+    return <tr key={person.key}><td><button type="button" className="crm-record-link" onClick={() => open('contact', person.key)}>{person.name}</button><br /><span className="crm-muted-copy">{person.email || 'No contact details'}</span></td><td>{person.title || '—'}</td><td><StatusChip>{label(person.status)}</StatusChip></td><td><div className="crm-button-row">{terminalSuppression ? <span className="crm-muted-copy">This person is terminally suppressed. No further review, campaign, draft, or attempt action is available.</span> : <>{person.approval !== 'approved' && <><button className="crm-text-button" type="button" disabled={busy} onClick={() => command('contact_approval', { accountKey, contactKey: person.key, decision: 'approved' })}>Approve contact</button><button className="crm-text-button" type="button" disabled={busy} onClick={() => command('contact_approval', { accountKey, contactKey: person.key, decision: 'rejected' })}>Reject contact</button></>}<button className="crm-text-button" type="button" disabled={busy} onClick={() => command('contact_disposition', { accountKey, contactKey: person.key, disposition: 'do_not_contact' })}>Do not contact</button></>}</div></td></tr>;
+  })}</tbody></table></div>{accountApproved ? <details className="crm-disclosure"><summary>Add a person</summary><form className="crm-inline-form" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); command('create_contact', { accountKey, fullName: form.get('fullName'), title: form.get('title'), email: form.get('email') }).then((result) => result && event.currentTarget.reset()); }}><label>Name<input name="fullName" required /></label><label>Role<input name="title" /></label><label>Email<input name="email" type="email" /></label><button className="crm-primary" disabled={busy}>Add person</button></form></details> : <p className="crm-muted-copy">Account approval is required before a person can be added.</p>}</Panel>;
 }
-
-function AccountDetail({ detail, accountKey, tab, setTab, command, busy }) {
-  return <section className="crm-account-details"><header className="crm-account-header"><div><p className="member-kicker">Account</p><h2>{detail.account.name}</h2><span className="crm-stage-chip">{label(detail.account.status)}</span></div><div className="crm-next-action"><span>Next step</span><strong>{detail.nextAction?.label || 'No follow-up scheduled'}</strong><small>{detail.nextAction?.owner || 'Unassigned'} · {formatDate(detail.nextAction?.dueAt, 'No due date')}</small></div></header>
-    <SectionButtons tab={tab} setTab={setTab} names={['Overview', 'People', 'Activity']} />
-    {tab === 'Overview' && <section className="crm-section"><h3>Open tasks</h3><ul className="crm-task-list">{detail.tasks.filter((task) => task.status === 'open').map((task) => <li key={task.key}><span><strong>{task.title}</strong><small>{formatDate(task.dueAt)} · {task.owner || 'Unassigned'}</small></span><button type="button" disabled={busy} onClick={() => command('complete_task', { accountKey, taskKey: task.key })}>Complete task</button></li>)}</ul><form className="crm-composer" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); command('create_task', { accountKey, title: form.get('title'), dueAt: asIsoDate(form.get('dueAt')) }); }}><label>New task<input name="title" required maxLength="240" /></label><label>Due date<input name="dueAt" type="datetime-local" /></label><button disabled={busy}>Create task</button></form><details className="crm-record-details"><summary>Record details</summary><p>Source: {detail.recordDetails.source || 'Unavailable'}</p><p>Account status decision: {label(detail.recordDetails.reviewStatus)}</p>{detail.recordDetails.reviewStatus !== 'approved' && <p><button type="button" disabled={busy} onClick={() => command('account_approval', { accountKey, decision: 'approved' })}>Approve account</button> <button type="button" disabled={busy} onClick={() => command('account_approval', { accountKey, decision: 'rejected' })}>Reject account</button></p>}</details></section>}
-    {tab === 'People' && <People detail={detail} accountKey={accountKey} command={command} busy={busy} />}
-    {tab === 'Activity' && <section className="crm-section"><h3>Activity</h3><ul>{detail.activities.map((activity, index) => <li key={`${activity.occurredAt}-${index}`}><strong>{label(activity.type)}</strong> · {formatDate(activity.occurredAt)}</li>)}</ul><form className="crm-composer" onSubmit={(event) => { event.preventDefault(); command('create_note', { accountKey, note: new FormData(event.currentTarget).get('note') }); }}><label>Add note<textarea name="note" required maxLength="4000" /></label><button disabled={busy}>Add note</button></form></section>}
-  </section>;
-}
-
-function People({ detail, accountKey, command, busy }) {
-  return <section className="crm-section"><h3>People</h3><table className="workspace-table"><thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Actions</th></tr></thead><tbody>{detail.contacts.map((person) => <tr key={person.key}><td><strong>{person.name}</strong><br />{person.title}</td><td>{person.email}</td><td>{label(person.status)}</td><td>{person.approval !== 'approved' && <><button type="button" disabled={busy} onClick={() => command('contact_approval', { accountKey, contactKey: person.key, decision: 'approved' })}>Approve contact</button> <button type="button" disabled={busy} onClick={() => command('contact_approval', { accountKey, contactKey: person.key, decision: 'rejected' })}>Reject contact</button> </>}<button type="button" disabled={busy} onClick={() => command('contact_disposition', { accountKey, contactKey: person.key, disposition: 'active' })}>Mark active</button> <button type="button" disabled={busy} onClick={() => command('contact_disposition', { accountKey, contactKey: person.key, disposition: 'do_not_contact' })}>Do not contact</button></td></tr>)}</tbody></table><form className="crm-composer" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); command('create_contact', { accountKey, fullName: form.get('fullName'), title: form.get('title'), email: form.get('email') }); }}><h3>Add person</h3><label>Name<input name="fullName" required maxLength="240" /></label><label>Role<input name="title" maxLength="240" /></label><label>Email<input name="email" type="email" maxLength="320" /></label><button disabled={busy}>Add person</button></form></section>;
-}
-
-function CampaignDetail({ detail, campaignKey, tab, setTab, command, busy }) {
-  const [accounts, setAccounts] = useState([]);
-  const [eligiblePeople, setEligiblePeople] = useState([]);
-  const [accountKey, setAccountKey] = useState('');
-  const requestSequence = useRef(0);
-
-  useEffect(() => {
-    const sequence = ++requestSequence.current;
-    fetch('/api/crm/workspace?directory=accounts&limit=50', { cache: 'no-store' }).then(responseJson).then((result) => { if (sequence === requestSequence.current) setAccounts(result.accounts || []); }).catch(() => {});
-    return () => { requestSequence.current += 1; };
-  }, [campaignKey]);
-
-  async function chooseAccount(key) {
-    setAccountKey(key);
-    setEligiblePeople([]);
-    const sequence = ++requestSequence.current;
-    const workspace = await command('account_workspace', { accountKey: key }, { preserveDetail: true });
-    if (sequence === requestSequence.current && workspace) setEligiblePeople(workspace.contacts || []);
-  }
-
+function DetailsPanel({ detail, accountKey, command, busy }) { return <div className="crm-record-layout"><Panel title="Record details"><dl className="crm-side-details"><div><dt>Account status decision</dt><dd>{label(detail.recordDetails.reviewStatus)}</dd></div><div><dt>Source evidence</dt><dd>Available in source evidence</dd></div></dl></Panel><Panel title="Review"><p className="crm-muted-copy">Account approval only permits the next defined review step; it never approves a person or creates outreach authority.</p><div className="crm-button-row"><ConfirmButton className="crm-primary" label="Approve account" title="Approve this account?" description="This records an account-level decision only. Contact, draft, and manual-attempt approval remain separate." disabled={busy} onConfirm={() => command('account_approval', { accountKey, decision: 'approved' })} /><ConfirmButton className="crm-danger-button" label="Reject account" title="Reject this account?" description="This decision is recorded in the account history. Confirm only after reviewing the supporting evidence." disabled={busy} onConfirm={() => command('account_approval', { accountKey, decision: 'rejected' })} /></div></Panel></div>; }
+function CampaignRecord({ detail, campaignKey, tab, setTab, command, contacts, label: recordLabel, onUnavailable, back }) {
   const campaign = detail.campaign;
-  return <section className="crm-account-details"><header className="crm-account-header"><div><p className="member-kicker">Campaign</p><h2>{campaign.name}</h2><span className="crm-stage-chip">{label(campaign.status)}</span></div><div>{campaign.channel} · {campaign.purpose || 'No purpose recorded'}</div></header>
-    <SectionButtons tab={tab} setTab={setTab} names={['Overview', 'People', 'Drafts', 'Activity']} />
-    {tab === 'Overview' && <section className="crm-section"><h3>Campaign overview</h3><p>{detail.members.length} people in this campaign.</p></section>}
-    {tab === 'People' && <section className="crm-section"><h3>People</h3><ul>{detail.members.map((member) => <li key={member.key}><strong>{member.person.name}</strong> · {member.accountName} · {label(member.status)}<DraftForm busy={busy} onSubmit={(body) => command('create_draft', { campaignKey, membershipKey: member.key, body })} /></li>)}</ul><h3>Add person</h3><p>Select an account, then add an eligible person from that account to this campaign.</p><label>Account<select value={accountKey} onChange={(event) => chooseAccount(event.target.value)}><option value="">Choose an account</option>{accounts.map((account) => <option key={account.key} value={account.key}>{account.name}</option>)}</select></label>{accountKey && <ul>{eligiblePeople.map((person) => <li key={person.key}>{person.name} {person.email ? `· ${person.email}` : ''} <button type="button" disabled={busy} onClick={() => command('add_campaign_member', { campaignKey, accountKey, contactKey: person.key })}>Add to campaign</button></li>)}</ul>}</section>}
-    {tab === 'Drafts' && <section className="crm-section"><h3>Drafts and manual attempts</h3>{detail.members.flatMap((member) => member.drafts.map((draft) => <article key={draft.key}><strong>{member.person.name} · revision {draft.revision}</strong><p>{draft.content.body || 'Draft content'}</p><p>{label(draft.approval)}</p><button type="button" disabled={busy} onClick={() => command('draft_approval', { campaignKey, draftKey: draft.key, decision: 'approved' })}>Approve draft</button> <button type="button" disabled={busy} onClick={() => command('draft_approval', { campaignKey, draftKey: draft.key, decision: 'rejected' })}>Reject draft</button> <button type="button" disabled={busy} onClick={() => command('create_attempt', { campaignKey, membershipKey: member.key, draftKey: draft.key })}>Create attempt</button></article>))}{detail.members.flatMap((member) => member.attempts.map((attempt) => <article key={attempt.key}><strong>{member.person.name} · {label(attempt.status)}</strong><p>{label(attempt.approval)}</p><button type="button" disabled={busy} onClick={() => command('attempt_approval', { campaignKey, attemptKey: attempt.key, decision: 'approved' })}>Approve attempt</button> <button type="button" disabled={busy} onClick={() => command('attempt_approval', { campaignKey, attemptKey: attempt.key, decision: 'rejected' })}>Reject attempt</button><form className="crm-composer" onSubmit={(event) => { event.preventDefault(); command('manual_execution', { campaignKey, attemptKey: attempt.key, outcomeNote: new FormData(event.currentTarget).get('outcomeNote') }); }}><label>Manual outcome<textarea name="outcomeNote" required maxLength="4000" /></label><button disabled={busy}>Record manual outcome</button></form></article>))}</section>}
-    {tab === 'Activity' && <section className="crm-section"><h3>Activity</h3><ul>{detail.activities.map((activity, index) => <li key={`${activity.occurredAt}-${index}`}><strong>{label(activity.type)}</strong> · {formatDate(activity.occurredAt)}</li>)}</ul></section>}
-  </section>;
+  return <div className="crm-record"><button className="crm-breadcrumb" type="button" onClick={back}>← {recordLabel}s</button><header className="crm-record-header"><div><p className="crm-eyebrow">{recordLabel}</p><h1>{campaign.name}</h1><div className="crm-record-subline"><StatusChip tone={campaign.status === 'active' ? 'green' : 'neutral'}>{label(campaign.status)}</StatusChip><span>{label(campaign.channel)} · {campaign.purpose || 'No purpose recorded'}</span></div></div><div className="crm-record-header-actions"><section className="crm-next-action-card"><span>{recordLabel} work</span><strong>{detail.members.length} people</strong><small>Manual only · no provider dispatch</small></section><RecordActionMenu onUnavailable={onUnavailable} /></div></header><RecordTabs names={CAMPAIGN_TABS} active={tab} setActive={setTab} />
+    {tab === 'Overview' && <div className="crm-record-layout"><Panel title="Campaign health"><div className="crm-kpi-grid"><Kpi label="People" value={detail.members.length} /><Kpi label="Drafts" value={detail.members.reduce((sum, member) => sum + member.drafts.length, 0)} tone="amber" /><Kpi label="Attempts" value={detail.members.reduce((sum, member) => sum + member.attempts.length, 0)} tone="green" /></div></Panel><Panel title="Manual-only boundary"><p><strong>{TAX_FIRM_WEEKLY_CALL_ICP.employeeCount.label}</strong></p><p className="crm-muted-copy">{TAX_FIRM_WEEKLY_CALL_ICP.evidenceRequirement} No automated send, export, enrichment, or provider dispatch is available.</p></Panel></div>}
+    {tab === 'Target list' && <TargetList members={detail.members} contacts={contacts} campaignKey={campaignKey} command={command} />}
+    {tab === 'Draft queue' && <DraftQueue members={detail.members} campaignKey={campaignKey} command={command} />}
+    {tab === 'Manual attempts' && <ManualAttemptQueue members={detail.members} campaignKey={campaignKey} command={command} />}
+    {tab === 'Activity' && <Panel title="Activity"><ActivityList activities={detail.activities} /></Panel>}
+  </div>;
 }
-
-function DraftForm({ busy, onSubmit }) {
-  return <form className="crm-composer" onSubmit={(event) => { event.preventDefault(); onSubmit(new FormData(event.currentTarget).get('body')); }}><label>Draft text<textarea name="body" required maxLength="12000" /></label><button disabled={busy}>Create draft</button></form>;
+function TargetList({ members, contacts, campaignKey, command }) {
+  const memberContactKeys = new Set(members.map((member) => member.person.key));
+  const eligible = contacts.filter((contact) => contact.approval === 'approved' && contact.disposition !== 'do_not_contact' && !memberContactKeys.has(contact.key));
+  return <div className="crm-record-layout"><div><Panel title="Membership queue">{members.length ? <div className="crm-table-wrap"><table className="crm-table"><thead><tr><th>Person</th><th>Account</th><th>Membership state</th><th>Draft state</th><th>Manual state</th></tr></thead><tbody>{members.map((member) => <tr key={member.key}><td>{member.person.name}<br /><span className="crm-muted-copy">{member.person.title || '—'}</span></td><td>{member.accountName}</td><td>{member.person.disposition === 'do_not_contact' ? <StatusChip tone="red">Do not contact — terminal</StatusChip> : <StatusChip>{label(member.status)}</StatusChip>}</td><td>{label(member.drafts.at(-1)?.approval, 'No draft')}</td><td>{label(member.attempts.at(-1)?.status, 'Not planned')}</td></tr>)}</tbody></table></div> : <EmptyState title="No members in this target list">No manual work can start until an individually approved person is added.</EmptyState>}</Panel></div><aside><Panel title="Add approved person"><p className="crm-muted-copy">Only an individually approved, non-suppressed person may be proposed. The server and CRM service recheck the full account → research → contact → membership chain.</p>{eligible.length ? <form className="crm-inline-form" onSubmit={(event) => { event.preventDefault(); const contact = contacts.find((item) => item.key === new FormData(event.currentTarget).get('contactKey')); if (contact) command('add_campaign_member', { accountKey: contact.accountKey, campaignKey, contactKey: contact.key }); }}><label>Person<select name="contactKey" required defaultValue=""><option value="" disabled>Select approved person</option>{eligible.map((contact) => <option key={contact.key} value={contact.key}>{contact.name} · {contact.accountName}</option>)}</select></label><button className="crm-primary" type="submit">Add to target list</button></form> : <p className="crm-muted-copy">No additional approved, non-suppressed people are available in the authenticated contact directory.</p>}</Panel></aside></div>;
 }
+function DraftQueue({ members, campaignKey, command }) { return members.length ? <div className="crm-draft-stack">{members.map((member) => <article className="crm-draft-card" key={member.key}><header><strong>{member.person.name}</strong><span>{member.accountName}</span></header>{member.person.disposition === 'do_not_contact' ? <p className="crm-muted-copy">Do not contact is terminal. Draft creation, review, attempt planning, and outcome capture are unavailable.</p> : <>{member.drafts.map((draft) => <div className="crm-draft-row" key={draft.key}><div><strong>Revision {draft.revision || '—'}</strong><pre className="crm-email-preview">{draft.content.body || 'Draft content unavailable'}</pre></div><div><StatusChip tone={draft.approval === 'approved' ? 'green' : 'amber'}>{label(draft.approval)}</StatusChip>{draft.approval !== 'approved' && <div className="crm-button-row"><button className="crm-text-button" type="button" onClick={() => command('draft_approval', { campaignKey, draftKey: draft.key, decision: 'approved' })}>Approve draft</button><button className="crm-text-button" type="button" onClick={() => command('draft_approval', { campaignKey, draftKey: draft.key, decision: 'rejected' })}>Reject draft</button></div>}{draft.approval === 'approved' && <button className="crm-text-button" type="button" onClick={() => command('create_attempt', { campaignKey, membershipKey: member.key, draftKey: draft.key })}>Plan manual attempt</button>}</div></div>)}<form className="crm-inline-form" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); command('create_draft', { campaignKey, membershipKey: member.key, body: form.get('body') }).then((result) => result && event.currentTarget.reset()); }}><label>New draft<textarea name="body" required maxLength="12000" placeholder="Write the exact proposed manual outreach copy…" /></label><button className="crm-primary" type="submit">Create draft revision</button></form></>}</article>)}</div> : <EmptyState title="No campaign members">Add an eligible person to the target list before preparing a draft.</EmptyState>; }
+function ManualAttemptQueue({ members, campaignKey, command }) { const attempts = members.flatMap((member) => member.attempts.map((attempt) => ({ member, attempt }))); return <Panel title="Manual attempt queue">{attempts.length ? <div className="crm-draft-stack">{attempts.map(({ member, attempt }) => <article className="crm-draft-card" key={attempt.key}><header><strong>{member.person.name}</strong><span>{member.accountName}</span></header>{member.person.disposition === 'do_not_contact' ? <p className="crm-muted-copy">Do not contact is terminal. This attempt cannot be approved, requeued, or recorded.</p> : <div className="crm-draft-row"><div><p>Manual attempt · {label(attempt.status)}</p>{attempt.outcomeNote && <p><strong>Recorded outcome:</strong> {attempt.outcomeNote}</p>}</div><div><StatusChip tone={attempt.approval === 'approved' ? 'green' : 'amber'}>{label(attempt.approval)}</StatusChip>{attempt.approval !== 'approved' && <div className="crm-button-row"><button className="crm-text-button" type="button" onClick={() => command('attempt_approval', { campaignKey, attemptKey: attempt.key, decision: 'approved' })}>Approve manual attempt</button><button className="crm-text-button" type="button" onClick={() => command('attempt_approval', { campaignKey, attemptKey: attempt.key, decision: 'rejected' })}>Reject manual attempt</button></div>}{attempt.approval === 'approved' && !attempt.outcomeNote && <form className="crm-inline-form" onSubmit={(event) => { event.preventDefault(); const note = new FormData(event.currentTarget).get('outcomeNote'); command('manual_execution', { campaignKey, attemptKey: attempt.key, outcomeNote: note }).then((result) => result && event.currentTarget.reset()); }}><label>Outcome<textarea name="outcomeNote" required maxLength="4000" placeholder="Record the result of the completed human action…" /></label><button className="crm-primary" type="submit">Record manual outcome</button></form>}</div></div>}</article>)}</div> : <EmptyState title="No manual attempts planned">An exact approved draft revision is required before a manual attempt can be planned.</EmptyState>}</Panel>; }
