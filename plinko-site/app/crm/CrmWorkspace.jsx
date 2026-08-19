@@ -2,15 +2,16 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { TAX_FIRM_WEEKLY_CALL_ICP } from '../../lib/tax-firm-weekly-call-icp.mjs';
+import SoloFounderPlaybook from './SoloFounderPlaybook.jsx';
 
-const MODULES = ['My Work', 'Accounts', 'Contacts', 'Leads', 'Opportunities', 'Tasks', 'Calendar', 'Calls', 'Meetings', 'Emails', 'Email Templates', 'Documents', 'Knowledge Base', 'Campaigns', 'Target Lists', 'Activities', 'Reports', 'Dashboards', 'Administration'];
+const MODULES = ['My Work', 'Playbook', 'Accounts', 'Contacts', 'Leads', 'Opportunities', 'Tasks', 'Calendar', 'Calls', 'Meetings', 'Emails', 'Email Templates', 'Documents', 'Knowledge Base', 'Campaigns', 'Target Lists', 'Activities', 'Reports', 'Dashboards', 'Administration'];
 const ACCOUNT_TABS = ['Overview', 'Activity', 'People', 'Tasks', 'Campaigns', 'Opportunities', 'Details'];
 const CAMPAIGN_TABS = ['Overview', 'Target list', 'Draft queue', 'Manual attempts', 'Activity'];
 const CONTACT_TABS = ['Overview', 'Activities', 'Campaign memberships'];
 const LEAD_TABS = ['Overview', 'Qualification', 'Associations', 'Activities', 'Handoff'];
 const OPPORTUNITY_TABS = ['Overview', 'Associations', 'Activity', 'Pipeline context'];
 const EMAIL_TABS = ['Overview', 'Preview', 'Relationships', 'Audit context'];
-const MODULE_SLUGS = { 'my-work': 'My Work', accounts: 'Accounts', contacts: 'Contacts', leads: 'Leads', opportunities: 'Opportunities', tasks: 'Tasks', calendar: 'Calendar', calls: 'Calls', meetings: 'Meetings', emails: 'Emails', 'email-templates': 'Email Templates', documents: 'Documents', 'knowledge-base': 'Knowledge Base', campaigns: 'Campaigns', 'target-lists': 'Target Lists', activities: 'Activities', reports: 'Reports', dashboards: 'Dashboards', administration: 'Administration' };
+const MODULE_SLUGS = { 'my-work': 'My Work', playbook: 'Playbook', accounts: 'Accounts', contacts: 'Contacts', leads: 'Leads', opportunities: 'Opportunities', tasks: 'Tasks', calendar: 'Calendar', calls: 'Calls', meetings: 'Meetings', emails: 'Emails', 'email-templates': 'Email Templates', documents: 'Documents', 'knowledge-base': 'Knowledge Base', campaigns: 'Campaigns', 'target-lists': 'Target Lists', activities: 'Activities', reports: 'Reports', dashboards: 'Dashboards', administration: 'Administration' };
 const moduleSlug = (module) => Object.entries(MODULE_SLUGS).find(([, value]) => value === module)?.[0] || 'my-work';
 
 
@@ -258,6 +259,7 @@ export default function CrmWorkspace() {
         : selected.kind === 'email' ? <EmailRecord detail={detail} tab={recordTab} setTab={changeTab} open={openRecord} back={() => returnToModule('Emails')} />
         : selected.kind === 'template' ? <EmailTemplateRecord detail={detail} tab={recordTab} setTab={changeTab} open={openRecord} back={() => returnToModule('Email Templates')} />
         : <ContactRecord detail={detail} tab={recordTab} setTab={changeTab} open={openRecord} back={() => returnToModule('Contacts')} />;
+    if (module === 'Playbook') return <SoloFounderPlaybook openModule={changeModule} />;
     if (module === 'Accounts') return <AccountList accounts={accounts} busy={busy} search={search} setSearch={(next) => { setSearch(next); writeRoute({ module: 'Accounts', search: next }, 'replace'); }} open={openRecord} command={command} />;
     if (module === 'Campaigns') return <CampaignList campaigns={campaigns} busy={busy} search={search} setSearch={(next) => { setSearch(next); writeRoute({ module: 'Campaigns', search: next }, 'replace'); }} open={openRecord} command={command} createRequested={campaignCreateRequested} clearCreateRequest={() => setCampaignCreateRequested(false)} />;
     if (module === 'Target Lists') return <TargetListDirectory campaigns={campaigns} busy={busy} search={search} setSearch={(next) => { setSearch(next); writeRoute({ module: 'Target Lists', search: next }, 'replace'); }} open={openRecord} />;

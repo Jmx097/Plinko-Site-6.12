@@ -655,3 +655,15 @@ footer p { font-size: 14.5px; max-width: 460px; }
 
 /* Keep keyboard focus distinct from the selected module and hover state. */
 .crm-app-nav button:focus-visible { outline:3px solid #247747; outline-offset:-3px; background:#edf8f0; }
+
+/* Solo-founder onboarding: a client-only guide over existing CRM modules. */
+.crm-playbook-principles { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin:0 0 22px; padding:0; }
+.crm-playbook-principles article { display:grid; gap:4px; padding:17px; border:1px solid #cce0d1; border-radius:7px; background:#f7fcf8; }
+.crm-playbook-principles strong { color:#1f693d; font-size:25px; line-height:1; }.crm-playbook-principles span { color:#587065; font-size:12px; line-height:1.35; }
+.crm-playbook-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; padding:0; }
+.crm-playbook-block { display:grid; grid-template-columns:82px 1fr; gap:16px; padding:20px; border:1px solid #dfe6e1; border-radius:7px; background:#fff; }
+.crm-playbook-time { align-self:start; padding:7px 8px; border-radius:5px; background:#edf8f0; color:#237044; font:700 11px var(--mono); text-align:center; white-space:nowrap; }
+.crm-playbook-block h2,.crm-playbook-close h2 { margin:3px 0 8px; color:#25352c; font:650 17px var(--sans); }.crm-playbook-block p:not(.crm-eyebrow) { color:#627269; font-size:13px; line-height:1.55; }.crm-playbook-block .crm-text-button { margin-top:11px; }
+.crm-playbook-close { margin-top:18px; padding:21px; border:1px solid #d7e4da; border-left:4px solid #2a884f; border-radius:7px; background:#f7fbf8; }.crm-playbook-close ul { display:grid; gap:7px; margin:12px 0 14px; padding-left:20px; color:#45574d; font-size:13px; }.crm-playbook-close > p { color:#6a786f; font-size:12px; line-height:1.55; }
+@media (max-width:900px) { .crm-playbook-principles { grid-template-columns:repeat(2,minmax(0,1fr)); }.crm-playbook-grid { grid-template-columns:1fr; } }
+@media (max-width:560px) { .crm-playbook-principles { grid-template-columns:1fr 1fr; }.crm-playbook-block { grid-template-columns:1fr; gap:11px; }.crm-playbook-time { justify-self:start; } }

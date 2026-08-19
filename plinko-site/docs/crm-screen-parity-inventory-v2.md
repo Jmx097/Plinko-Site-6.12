@@ -2,7 +2,7 @@
 
 Version: 2.0
 Status: current source inventory; this is not browser acceptance.
-Last reviewed: 2026-08-18 UTC.
+Last reviewed: 2026-08-19 UTC.
 Supersedes for scope only: `crm-screen-parity-inventory-v1.md`. The v1 baseline and `crm-screen-parity-acceptance-qa-2026-08-18.md` remain preserved evidence.
 
 ## Scope and evidence boundary
@@ -22,6 +22,7 @@ The local QA observation of a signed-out `/account` HTTP 500 remains unresolved 
 | Module | Current surface and source boundary | Classification | Required acceptance evidence |
 |---|---|---|---|
 | My Work | Authenticated daily account/task/activity/campaign read model with freshness and account links. | Source-covered | Equal-admin browser loads, opens an account, refreshes, and confirms scope. |
+| Playbook | In-product, client-side 2-hour solo-founder workflow guidance that deep-links only to existing CRM modules. It makes no data request or mutation and creates no outreach authority. | Source-covered | Browser module navigation and each step link routes to the named existing module. |
 | Accounts | Searchable, sortable, paginated account directory; account creation uses the bounded CRM command. | Source-covered | Browser search/list/record path and a non-sending create/read-back with a disposable fixture. |
 | Contacts | Scoped directory and contact record views; account, contact approval, and DNC remain separate. | Source-covered | Browser record traversal plus terminal-DNC failure checks. |
 | Leads | Account-backed qualification context, associations, and handoff state; no duplicate lead lifecycle. | Source-covered | Browser list/record navigation and fail-closed qualification/research handoff check. |
@@ -65,7 +66,7 @@ The unavailable classifications above are deliberate product boundaries, not hid
 - `tests/clerk-auth-contract.test.mjs` asserts Clerk installation, route protection, and Clerk-hosted sign-in/up return paths.
 - `tests/crm-account-core-outage.test.mjs` asserts equal-admin CRM entry does not wait on Pocket Core reads.
 - `tests/crm-readonly-command-center.test.mjs` asserts the full module declaration and fail-closed boundaries.
-- `tests/crm-screen-parity-inventory-v2.test.mjs` locks this inventory to the current 19-module declaration and records the signed-out contract/blockers.
+- `tests/crm-screen-parity-inventory-v2.test.mjs` locks this inventory to the current 20-module declaration and records the signed-out contract/blockers.
 
 ## Acceptance rule
 

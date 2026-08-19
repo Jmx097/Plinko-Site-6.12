@@ -23,7 +23,7 @@ test('legacy admin CRM routes redirect into the shared workspace', async () => {
 
 test('CRM presents an Espo-style operator shell with account-first detail work', async () => {
   const client = await source('app/crm/CrmWorkspace.jsx');
-  assert.match(client, /\['My Work', 'Accounts', 'Contacts', 'Leads', 'Opportunities', 'Tasks', 'Calendar', 'Calls', 'Meetings', 'Emails', 'Email Templates', 'Documents', 'Knowledge Base', 'Campaigns', 'Target Lists', 'Activities', 'Reports', 'Dashboards', 'Administration'\]/);
+  assert.match(client, /\['My Work', 'Playbook', 'Accounts', 'Contacts', 'Leads', 'Opportunities', 'Tasks', 'Calendar', 'Calls', 'Meetings', 'Emails', 'Email Templates', 'Documents', 'Knowledge Base', 'Campaigns', 'Target Lists', 'Activities', 'Reports', 'Dashboards', 'Administration'\]/);
   assert.match(client, /Search accounts/);
   assert.match(client, /This week/);
   assert.match(client, /Next action/);
