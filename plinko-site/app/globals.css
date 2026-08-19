@@ -723,49 +723,50 @@ footer p { font-size: 14.5px; max-width: 460px; }
 @media (max-width:900px) { .crm-station-list { grid-template-columns:1fr; }.crm-playbook-principles { grid-template-columns:repeat(2,minmax(0,1fr)); }.crm-playbook-grid { grid-template-columns:1fr; } }
 @media (max-width:560px) { .crm-module-menu-trigger { min-height:48px; }.crm-module-menu { grid-template-columns:repeat(2,minmax(0,1fr)); }.crm-app-nav.is-open .crm-module-menu { max-height:620px; }.crm-module-menu button { min-height:44px; font-size:12px; }.crm-station-rail { margin-right:-14px; margin-left:-14px; padding:0 14px 3px; scroll-snap-type:x proximity; }.crm-station-rail a { scroll-snap-align:start; }.crm-station-card { padding:16px; }.crm-playbook-principles { grid-template-columns:1fr 1fr; }.crm-playbook-block { grid-template-columns:1fr; gap:11px; }.crm-playbook-time { justify-self:start; } }
 
-/* Mobile CRM header: calm utility bar, not a miniature desktop banner. */
+/* Mobile CRM header: preserve the brand gradient without a floating layout. */
 @media (max-width:560px) {
   .crm-topbar {
     align-items:center;
     gap:8px;
-    padding:8px 14px 10px;
-    background:#fff;
-    border-bottom:1px solid #dfe7e1;
-    box-shadow:0 2px 9px rgba(28,43,33,.05);
+    padding:10px 14px 12px;
+    background:linear-gradient(105deg,#030303 0%,#07150c 17%,#14763a 48%,#5dcc82 70%,#eaf5ed 100%);
+    border-bottom:1px solid #9bcfb0;
+    box-shadow:0 3px 12px rgba(23,80,43,.12);
   }
   .crm-brand-trigger {
     width:132px;
     height:42px;
     gap:5px;
-    padding:0;
-    border:0;
-    border-radius:0;
-    background:transparent;
-    box-shadow:none;
+    padding:1px 7px 1px 0;
+    border:1px solid rgba(255,255,255,.16);
+    border-radius:8px;
+    background:#030303;
+    box-shadow:inset -1px 0 0 rgba(255,255,255,.08);
   }
   .crm-brand-trigger:hover,
-  .crm-brand-trigger:focus-visible { background:#f2f7f3; }
+  .crm-brand-trigger:focus-visible { background:#0c1710; }
   .crm-brand-trigger img { width:106px; height:38px; }
-  .crm-brand-chevron { color:#257746; font-size:17px; transform:none; }
+  .crm-brand-chevron { color:var(--crm-brand-accent); font-size:17px; transform:none; }
   .crm-topbar-actions { gap:7px; }
   .crm-topbar-button,
   .crm-avatar-button {
     min-height:38px;
-    border-color:#d5e1d8;
+    border-color:rgba(20,81,43,.2);
     border-radius:8px;
-    box-shadow:none;
+    background:rgba(255,255,255,.92);
+    box-shadow:0 1px 2px rgba(18,58,32,.08);
   }
   .crm-quick-create .crm-topbar-button { width:38px; }
-  .crm-avatar-button { width:38px; height:38px; }
-  .crm-global-search { margin-top:1px; }
+  .crm-avatar-button { width:38px; height:38px; background:#e8f4eb; }
+  .crm-global-search { margin-top:3px; }
   .crm-global-search input {
     min-height:40px;
     padding:9px 12px;
-    border-color:#d5e1d8;
+    border-color:rgba(255,255,255,.72);
     border-radius:8px;
-    background:#f5f8f6;
-    box-shadow:inset 0 1px 1px rgba(20,48,31,.025);
+    background:rgba(255,255,255,.94);
+    box-shadow:0 1px 3px rgba(10,61,31,.1);
   }
-  .crm-global-search input::placeholder { color:#819087; }
+  .crm-global-search input::placeholder { color:#718077; }
   .crm-mobile-nav { box-shadow:none; }
 }
