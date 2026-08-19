@@ -3,15 +3,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { TAX_FIRM_WEEKLY_CALL_ICP } from '../../lib/tax-firm-weekly-call-icp.mjs';
 import SoloFounderPlaybook from './SoloFounderPlaybook.jsx';
+import StationPlaybooks from './StationPlaybooks.jsx';
 
-const MODULES = ['My Work', 'Playbook', 'Accounts', 'Contacts', 'Leads', 'Opportunities', 'Tasks', 'Calendar', 'Calls', 'Meetings', 'Emails', 'Email Templates', 'Documents', 'Knowledge Base', 'Campaigns', 'Target Lists', 'Activities', 'Reports', 'Dashboards', 'Administration'];
+const MODULES = ['My Work', 'Stations', 'Playbook', 'Accounts', 'Contacts', 'Leads', 'Opportunities', 'Tasks', 'Calendar', 'Calls', 'Meetings', 'Emails', 'Email Templates', 'Documents', 'Knowledge Base', 'Campaigns', 'Target Lists', 'Activities', 'Reports', 'Dashboards', 'Administration'];
 const ACCOUNT_TABS = ['Overview', 'Activity', 'People', 'Tasks', 'Campaigns', 'Opportunities', 'Details'];
 const CAMPAIGN_TABS = ['Overview', 'Target list', 'Draft queue', 'Manual attempts', 'Activity'];
 const CONTACT_TABS = ['Overview', 'Activities', 'Campaign memberships'];
 const LEAD_TABS = ['Overview', 'Qualification', 'Associations', 'Activities', 'Handoff'];
 const OPPORTUNITY_TABS = ['Overview', 'Associations', 'Activity', 'Pipeline context'];
 const EMAIL_TABS = ['Overview', 'Preview', 'Relationships', 'Audit context'];
-const MODULE_SLUGS = { 'my-work': 'My Work', playbook: 'Playbook', accounts: 'Accounts', contacts: 'Contacts', leads: 'Leads', opportunities: 'Opportunities', tasks: 'Tasks', calendar: 'Calendar', calls: 'Calls', meetings: 'Meetings', emails: 'Emails', 'email-templates': 'Email Templates', documents: 'Documents', 'knowledge-base': 'Knowledge Base', campaigns: 'Campaigns', 'target-lists': 'Target Lists', activities: 'Activities', reports: 'Reports', dashboards: 'Dashboards', administration: 'Administration' };
+const MODULE_SLUGS = { 'my-work': 'My Work', stations: 'Stations', playbook: 'Playbook', accounts: 'Accounts', contacts: 'Contacts', leads: 'Leads', opportunities: 'Opportunities', tasks: 'Tasks', calendar: 'Calendar', calls: 'Calls', meetings: 'Meetings', emails: 'Emails', 'email-templates': 'Email Templates', documents: 'Documents', 'knowledge-base': 'Knowledge Base', campaigns: 'Campaigns', 'target-lists': 'Target Lists', activities: 'Activities', reports: 'Reports', dashboards: 'Dashboards', administration: 'Administration' };
 const moduleSlug = (module) => Object.entries(MODULE_SLUGS).find(([, value]) => value === module)?.[0] || 'my-work';
 
 
@@ -31,7 +32,22 @@ async function responseJson(response) { const body = await response.json().catch
 
 function EmptyState({ title, children }) { return <section className="crm-empty"><h2>{title}</h2><p>{children}</p></section>; }
 function StatusChip({ children, tone = 'neutral' }) { return <span className={`crm-chip crm-chip-${tone}`}>{children}</span>; }
-function ModuleNav({ active, onChange }) { return <nav className="crm-app-nav" aria-label="CRM modules">{MODULES.map((module) => <button type="button" className={module === active ? 'is-active' : ''} key={module} onClick={() => onChange(module)}>{module}</button>)}</nav>; }
+function ModuleNav({ active, onChange }) {
+  const [open, setOpen] = useState(false);
+  const choose = (module) => { onChange(module); setOpen(false); };
+  return <nav className={`crm-app-nav${open ? ' is-open' : ''}`} aria-label="CRM modules">
+    <button className="crm-module-menu-trigger" type="button" aria-expanded={open} aria-controls="crm-module-menu" onClick={() => setOpen(!open)}><span>CRM modules</span><strong>{active}</strong><span aria-hidden="true">⌄</span></button>
+    <div className="crm-module-menu" id="crm-module-menu" aria-hidden={!open}>{MODULES.map((module) => <button type="button" className={module === active ? 'is-active' : ''} key={module} tabIndex={open ? 0 : -1} onClick={() => choose(module)}>{module}</button>)}</div>
+  </nav>;
+}
+function MobileModuleNav({ active, onChange }) {
+  const primary = ['My Work', 'Accounts', 'Tasks', 'Calendar'];
+  const activeIsPrimary = primary.includes(active);
+  return <nav className="crm-mobile-nav" aria-label="Quick CRM navigation">
+    {primary.map((module) => <button type="button" className={module === active ? 'is-active' : ''} key={module} onClick={() => onChange(module)}>{module}</button>)}
+    <label className={!activeIsPrimary ? 'is-active' : ''}><span className="sr-only">More CRM modules</span><select value={activeIsPrimary ? '' : active} aria-label="More CRM modules" onChange={(event) => event.target.value && onChange(event.target.value)}><option value="">More</option>{MODULES.filter((module) => !primary.includes(module)).map((module) => <option value={module} key={module}>{module}</option>)}</select></label>
+  </nav>;
+}
 function Panel({ title, action, children, className = '' }) { return <section className={`crm-panel ${className}`}><header className="crm-panel-header"><h2>{title}</h2>{action}</header>{children}</section>; }
 function LoadingState({ label = 'Loading workspace…' }) { return <section className="crm-state crm-state-loading" aria-live="polite"><span className="crm-loading-mark" aria-hidden="true" /><p>{label}</p></section>; }
 function ErrorState({ message, retry }) { return <section className="crm-state crm-state-error" role="alert"><strong>Could not load this workspace view.</strong><p>{message}</p>{retry && <button className="crm-text-button" type="button" onClick={retry}>Try again</button>}</section>; }
@@ -112,8 +128,25 @@ function WorkspaceShortcuts({ favorites, recent, open, toggleFavorite }) { const
 function QuickCreate({ onRoute }) { const [open, setOpen] = useState(false); return <div className="crm-quick-create"><button type="button" className="crm-topbar-button" aria-expanded={open} onClick={() => setOpen(!open)}>+ Create</button>{open && <div className="crm-topbar-menu"><button type="button" onClick={() => { onRoute('Accounts'); setOpen(false); }}>Account</button><button type="button" onClick={() => { onRoute('Campaigns'); setOpen(false); }}>Campaign</button><button type="button" onClick={() => { onRoute('Calendar'); setOpen(false); }}>Task</button><p>Each route keeps its existing, account-scoped and authorized create boundary.</p></div>}</div>; }
 function UserMenu() { const [open, setOpen] = useState(false); return <div className="crm-user-menu"><button type="button" className="crm-avatar-button" aria-expanded={open} onClick={() => setOpen(!open)}>PL<span className="sr-only">Open user menu</span></button>{open && <div className="crm-topbar-menu"><a href="/account">Account home</a><p>Shared CRM administrator</p></div>}</div>; }
 
+const BRAND_OPTIONS = [
+  { id: 'green', label: 'Green', src: '/brands/plinko-pocket-green.png', accent: '#34d06d' },
+  { id: 'white', label: 'White', src: '/brands/plinko-pocket-white.png', accent: '#dfe6e1' },
+  { id: 'red', label: 'Red', src: '/brands/plinko-pocket-red.png', accent: '#f15b55' },
+  { id: 'blue', label: 'Blue', src: '/brands/plinko-pocket-blue.png', accent: '#6398ff' },
+  { id: 'yellow', label: 'Yellow', src: '/brands/plinko-pocket-yellow.png', accent: '#f5cd42' },
+  { id: 'purple', label: 'Purple', src: '/brands/plinko-pocket-purple.png', accent: '#b970f4' },
+];
+function BrandSwitcher({ brandId, onBrandChange }) {
+  const [open, setOpen] = useState(false);
+  const selected = BRAND_OPTIONS.find((option) => option.id === brandId) || BRAND_OPTIONS[0];
+  const choose = (id) => { onBrandChange(id); window.localStorage.setItem('plinko-crm-brand', id); setOpen(false); };
+  return <div className="crm-brand-switcher"><button type="button" className="crm-brand-trigger" aria-label={`Choose CRM brand color; currently ${selected.label}`} aria-expanded={open} aria-controls="crm-brand-options" onClick={() => setOpen(!open)}><img src={selected.src} alt="Plinko Pocket" /><span className="crm-brand-chevron" aria-hidden="true">⌄</span></button>{open && <div id="crm-brand-options" className="crm-brand-options" role="menu" aria-label="Choose CRM brand color">{BRAND_OPTIONS.map((option) => <button type="button" role="menuitemradio" aria-checked={option.id === brandId} key={option.id} onClick={() => choose(option.id)}><img src={option.src} alt="" /><span>{option.label}</span>{option.id === brandId && <strong aria-label="Selected">✓</strong>}</button>)}</div>}</div>;
+}
+
 export default function CrmWorkspace() {
   const [module, setModule] = useState('My Work');
+  const [brandId, setBrandId] = useState('green');
+  useEffect(() => { const saved = window.localStorage.getItem('plinko-crm-brand'); if (BRAND_OPTIONS.some((option) => option.id === saved)) setBrandId(saved); }, []);
   const [accounts, setAccounts] = useState([]);
   const [campaigns, setCampaigns] = useState([]);
   const [contacts, setContacts] = useState([]);
@@ -259,6 +292,7 @@ export default function CrmWorkspace() {
         : selected.kind === 'email' ? <EmailRecord detail={detail} tab={recordTab} setTab={changeTab} open={openRecord} back={() => returnToModule('Emails')} />
         : selected.kind === 'template' ? <EmailTemplateRecord detail={detail} tab={recordTab} setTab={changeTab} open={openRecord} back={() => returnToModule('Email Templates')} />
         : <ContactRecord detail={detail} tab={recordTab} setTab={changeTab} open={openRecord} back={() => returnToModule('Contacts')} />;
+    if (module === 'Stations') return <StationPlaybooks openModule={changeModule} />;
     if (module === 'Playbook') return <SoloFounderPlaybook openModule={changeModule} />;
     if (module === 'Accounts') return <AccountList accounts={accounts} busy={busy} search={search} setSearch={(next) => { setSearch(next); writeRoute({ module: 'Accounts', search: next }, 'replace'); }} open={openRecord} command={command} />;
     if (module === 'Campaigns') return <CampaignList campaigns={campaigns} busy={busy} search={search} setSearch={(next) => { setSearch(next); writeRoute({ module: 'Campaigns', search: next }, 'replace'); }} open={openRecord} command={command} createRequested={campaignCreateRequested} clearCreateRequest={() => setCampaignCreateRequested(false)} />;
@@ -283,9 +317,11 @@ export default function CrmWorkspace() {
   const searchRecords = recordSearchEntries({ accounts, campaigns, contacts, tasks, emails, templates });
   const favorites = favoriteRecords.map((favorite) => searchRecords.find((item) => item.key === favorite.key) || favorite);
   const recent = recentRecords.map((recentRecord) => searchRecords.find((item) => item.key === recentRecord.key) || recentRecord);
-  return <main className="crm-app-shell">
-    <header className="crm-topbar"><div><a className="crm-brand" href="/account">PLINKO <span>CRM</span></a><p>Shared campaign workspace</p></div><div className="crm-topbar-actions"><GlobalSearch records={searchRecords} open={openRecord} toggleFavorite={toggleFavorite} favorites={new Set(favorites.map((item) => item.key))} /><WorkspaceShortcuts favorites={favorites} recent={recent} open={openRecord} toggleFavorite={toggleFavorite} /><QuickCreate onRoute={routeQuickCreate} /><button type="button" className="crm-notification-button" onClick={() => setNotice({ kind: 'success', text: 'No new workspace notifications.' })}>Notifications</button><UserMenu /><a className="crm-back-link" href="/account">Back to account home</a></div></header>
+  const activeBrand = BRAND_OPTIONS.find((option) => option.id === brandId) || BRAND_OPTIONS[0];
+  return <main className="crm-app-shell" style={{ '--crm-brand-accent': activeBrand.accent }}>
+    <header className="crm-topbar"><div><BrandSwitcher brandId={brandId} onBrandChange={setBrandId} /><p>Shared campaign workspace</p></div><div className="crm-topbar-actions"><GlobalSearch records={searchRecords} open={openRecord} toggleFavorite={toggleFavorite} favorites={new Set(favorites.map((item) => item.key))} /><WorkspaceShortcuts favorites={favorites} recent={recent} open={openRecord} toggleFavorite={toggleFavorite} /><QuickCreate onRoute={routeQuickCreate} /><button type="button" className="crm-notification-button" onClick={() => setNotice({ kind: 'success', text: 'No new workspace notifications.' })}>Notifications</button><UserMenu /><a className="crm-back-link" href="/account">Back to account home</a></div></header>
     <ModuleNav active={module} onChange={changeModule} />
+    <MobileModuleNav active={module} onChange={changeModule} />
     {notice && <div role="status" className={`crm-notice crm-notice-${notice.kind}`}><strong>{notice.kind === 'error' ? 'Action needs attention' : 'Updated'}</strong><span>{notice.text}</span><button type="button" aria-label="Dismiss notification" onClick={() => setNotice(null)}>×</button></div>}
     {renderModule()}
   </main>;

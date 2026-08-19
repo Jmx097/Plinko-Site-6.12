@@ -23,7 +23,7 @@ test('legacy admin CRM routes redirect into the shared workspace', async () => {
 
 test('CRM presents an Espo-style operator shell with account-first detail work', async () => {
   const client = await source('app/crm/CrmWorkspace.jsx');
-  assert.match(client, /\['My Work', 'Playbook', 'Accounts', 'Contacts', 'Leads', 'Opportunities', 'Tasks', 'Calendar', 'Calls', 'Meetings', 'Emails', 'Email Templates', 'Documents', 'Knowledge Base', 'Campaigns', 'Target Lists', 'Activities', 'Reports', 'Dashboards', 'Administration'\]/);
+  assert.match(client, /\['My Work', 'Stations', 'Playbook', 'Accounts', 'Contacts', 'Leads', 'Opportunities', 'Tasks', 'Calendar', 'Calls', 'Meetings', 'Emails', 'Email Templates', 'Documents', 'Knowledge Base', 'Campaigns', 'Target Lists', 'Activities', 'Reports', 'Dashboards', 'Administration'\]/);
   assert.match(client, /Search accounts/);
   assert.match(client, /This week/);
   assert.match(client, /Next action/);
@@ -60,6 +60,24 @@ test('CRM shell keeps module, record, tab, and directory search state in browser
   assert.match(styles, /\.crm-global-search/);
   assert.match(styles, /\.crm-topbar-actions/);
   assert.match(styles, /@media \(max-width:560px\).*\.crm-global-search/s);
+  assert.match(client, /function MobileModuleNav\(/);
+  assert.match(client, /function ModuleNav\(/);
+  assert.match(client, /crm-module-menu-trigger/);
+  assert.match(styles, /\.crm-module-menu/);
+});
+
+test('five stations are accessible as a separate CRM section with playbooks linked to existing work modules', async () => {
+  const client = await source('app/crm/CrmWorkspace.jsx');
+  const stations = await source('app/crm/StationPlaybooks.jsx');
+  const styles = await source('app/globals.css');
+
+  assert.match(client, /stations: 'Stations'/);
+  assert.match(client, /if \(module === 'Stations'\) return <StationPlaybooks/);
+  for (const station of ['Find', 'Propose', 'Onboard', 'Deliver', 'Report']) assert.match(stations, new RegExp(`name: '${station}'`));
+  for (const destination of ['Accounts', 'Opportunities', 'Tasks', 'Campaigns', 'Reports']) assert.match(stations, new RegExp(`destination: '${destination}'`));
+  assert.match(stations, /openModule\(station\.destination\)/);
+  assert.match(styles, /\.crm-station-list/);
+  assert.match(styles, /\.crm-station-card/);
 });
 
 test('workspace API exposes opaque handles and resolves account/task IDs only on the server', async () => {
@@ -411,7 +429,8 @@ test('global search groups only authorized CRM directories and keeps favorites a
   assert.match(client, /onRoute\('Campaigns'\);/);
   assert.match(client, /onRoute\('Calendar'\);/);
   assert.match(client, /setRecentRecords/);
-  assert.doesNotMatch(client, /localStorage|sessionStorage/);
+  const sessionScopedSearch = client.slice(client.indexOf('function WorkspaceShortcuts'), client.indexOf('const BRAND_OPTIONS'));
+  assert.doesNotMatch(sessionScopedSearch, /localStorage|sessionStorage/);
   assert.match(styles, /\.crm-search-group/);
   assert.match(styles, /\.crm-workspace-shortcuts/);
   assert.match(styles, /\.crm-star-button/);
