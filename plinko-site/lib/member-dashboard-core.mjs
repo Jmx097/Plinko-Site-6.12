@@ -51,12 +51,13 @@ export async function createSupportRequestWithConfig({ userId, subject, message,
 
 export async function getAdminControlPlaneWithConfig({ config, fetchImpl = fetch } = {}) {
   const client = createCoreClient(config, fetchImpl);
-  const [supportRequests, grants, memberProfiles] = await Promise.all([
+  const [supportRequests, grants, memberProfiles, roleAssignments] = await Promise.all([
     client.get('member_support_requests?select=id,user_id,subject,message,status,created_at&order=created_at.desc&limit=100'),
     client.get('member_module_grants?select=id,user_id,module_key,enabled,expires_at,updated_at&order=updated_at.desc&limit=100'),
     client.get('member_profiles?select=user_id&order=created_at.desc&limit=100'),
+    client.get('member_role_assignments?select=id,user_id,role_key,enabled,expires_at,updated_at&order=updated_at.desc&limit=100'),
   ]);
-  return { supportRequests, grants, memberProfiles };
+  return { supportRequests, grants, memberProfiles, roleAssignments };
 }
 
 export async function setMemberModuleGrantWithConfig({ userId, moduleKey, enabled, actorEmail, config, fetchImpl = fetch } = {}) {

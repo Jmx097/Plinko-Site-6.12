@@ -3,7 +3,8 @@ import { auth, currentUser } from '@clerk/nextjs/server';
 import { getMemberOverview } from '../../lib/member-activation.mjs';
 import { getMemberDashboard } from '../../lib/member-dashboard.mjs';
 import { isAdminEmail } from '../../lib/plinko-pocket-admin.mjs';
-import { requireCrmEqualAdminEmail } from '../../lib/crm-equal-admin.mjs';
+import { hasCrmWorkspaceAccess } from '../../lib/crm-equal-admin.mjs';
+import { getMemberRoleAccess } from '../../lib/pocket-roles.mjs';
 import { submitSupportRequest } from './actions';
 
 export const dynamic = 'force-dynamic';
@@ -26,23 +27,33 @@ export default async function AccountPage() {
   const firstName = user?.firstName || 'Member';
   const email = user?.emailAddresses.find((address) => address.id === user.primaryEmailAddressId)?.emailAddress
     || user?.emailAddresses[0]?.emailAddress;
-  let crmAdmin = false;
-  try { requireCrmEqualAdminEmail(user); crmAdmin = true; } catch { /* Non-CRM members keep the standard Pocket home. */ }
+  let roleAccess = { roles: [], capabilities: [] };
+  try { roleAccess = await getMemberRoleAccess({ userId }); } catch { /* Core may be unavailable; legacy operator access remains functional. */ }
+  const crmAccess = await hasCrmWorkspaceAccess(user, userId);
+  const demoAccess = roleAccess.capabilities.includes('demo.course');
 
   // The CRM is an independent operating surface. Its authorized operators must
   // not be blocked by an outage in the separate Pocket/referral Core.
-  if (crmAdmin) {
+  if (crmAccess) {
     return (
       <main className="member-page">
         <section className="member-panel member-dashboard" aria-labelledby="account-title">
-          <p className="member-kicker">Plinko CRM · operator home</p>
+          <p className="member-kicker">Plinko Pocket · My Work</p>
           <h1 id="account-title">Welcome, {firstName}</h1>
           {email ? <p className="member-email">{email}</p> : null}
           <div className="member-status">
-            <strong>Your shared campaign workspace is ready.</strong>
-            <span>Open Accounts to work the weekly queue, then use Campaigns to record manual outcomes and follow-ups.</span>
+            <strong>Your Sales workspace is ready.</strong>
+            <span>Start in My Work, work the shared account queue, and use the five station playbooks to keep each next action connected.</span>
           </div>
-          <p className="member-admin-link"><a href="/crm">Open campaign CRM →</a></p>
+          <section className="member-modules" aria-labelledby="work-title">
+            <h2 id="work-title">Your work</h2>
+            <ul>
+              <li><strong><a href="/crm">My Work →</a></strong><span>Your shared daily account, task, activity, and campaign workspace.</span></li>
+              <li><strong><a href="/crm?module=Stations">Five station playbooks →</a></strong><span>Find, Propose, Onboard, Deliver, and Report—connected to the tools used to do the work.</span></li>
+              {demoAccess ? <li><strong><a href="/demo">Demo course library →</a></strong><span>Shared learning content, kept separate from the live Sales workspace.</span></li> : null}
+            </ul>
+          </section>
+          <p className="member-copy">Roles currently active: {roleAccess.roles.length ? roleAccess.roles.join(', ') : 'legacy CRM access'}.</p>
         </section>
       </main>
     );
@@ -59,7 +70,8 @@ export default async function AccountPage() {
         <p className="member-kicker">Plinko Pocket · member home</p>
         <h1 id="account-title">Welcome, {firstName}</h1>
         {email ? <p className="member-email">{email}</p> : null}
-        {crmAdmin ? <p className="member-admin-link"><a href="/crm">Open campaign CRM →</a></p> : null}
+        {crmAccess ? <p className="member-admin-link"><a href="/crm">Open campaign CRM →</a></p> : null}
+        {demoAccess ? <p className="member-admin-link"><a href="/demo">Open demo course library →</a></p> : null}
         {email && isAdminEmail(email) ? <p className="member-admin-link"><a href="/admin">Open Pocket staff control plane →</a></p> : null}
 
         <div className="member-status" aria-live="polite">

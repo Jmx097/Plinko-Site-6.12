@@ -3,7 +3,7 @@
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { revalidatePath } from 'next/cache';
 
-import { setMemberModuleGrant, setSupportRequestStatus } from '../../lib/member-dashboard.mjs';
+import { setMemberModuleGrant, setMemberRole, setSupportRequestStatus } from '../../lib/member-dashboard.mjs';
 import { requireAdminEmail } from '../../lib/plinko-pocket-admin.mjs';
 import { setWaitlistStatus } from '../../lib/waitlist.mjs';
 
@@ -19,6 +19,15 @@ export async function updateGrantForMember(userId, moduleKey, formData) {
   await setMemberModuleGrant({ userId, moduleKey, enabled: formData.get('enabled') === 'true', actorEmail });
   revalidatePath('/admin');
   revalidatePath('/account');
+}
+
+export async function updateRoleForMember(userId, roleKey, formData) {
+  const actorEmail = await verifiedStaffEmail();
+  await setMemberRole({ userId, roleKey, enabled: formData.get('enabled') === 'true', actorEmail });
+  revalidatePath('/admin');
+  revalidatePath('/account');
+  revalidatePath('/crm');
+  revalidatePath('/demo');
 }
 
 export async function updateSupportStatus(requestId, formData) {

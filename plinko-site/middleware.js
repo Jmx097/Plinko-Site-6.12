@@ -1,7 +1,7 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 
-const isProtectedRoute = createRouteMatcher(['/account(.*)', '/admin(.*)', '/crm(.*)', '/api/crm(.*)']);
+const isProtectedRoute = createRouteMatcher(['/account(.*)', '/admin(.*)', '/crm(.*)', '/demo(.*)', '/api/crm(.*)']);
 
 export default clerkMiddleware(async (auth, req) => {
   // `app.` is the Pocket entry point; the same Next app also owns the public

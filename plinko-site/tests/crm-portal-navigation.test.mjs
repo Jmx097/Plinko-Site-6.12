@@ -5,11 +5,12 @@ import { test } from 'node:test';
 const root = new URL('../', import.meta.url);
 const source = (path) => readFile(new URL(path, root), 'utf8');
 
-test('the authenticated account home links equal CRM admins into the shared campaign workspace', async () => {
+test('the authenticated account home links role-authorized Sales users into the shared campaign workspace', async () => {
   const page = await source('app/account/page.jsx');
-  assert.match(page, /requireCrmEqualAdminEmail/);
+  assert.match(page, /hasCrmWorkspaceAccess/);
+  assert.match(page, /getMemberRoleAccess/);
   assert.match(page, /href="\/crm"/);
-  assert.match(page, /Open campaign CRM/);
+  assert.match(page, /My Work/);
 });
 
 test('the Pocket staff control plane links authorized operators into the shared campaign workspace', async () => {

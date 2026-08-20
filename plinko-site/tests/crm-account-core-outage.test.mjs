@@ -2,14 +2,16 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 
-test('CRM admins can enter the campaign workspace without Pocket Core reads', async () => {
+test('legacy CRM operators retain a Core-outage-safe My Work path while role access is additive', async () => {
   const page = await readFile(new URL('../app/account/page.jsx', import.meta.url), 'utf8');
-  const crmCheck = page.indexOf('try { requireCrmEqualAdminEmail(user); crmAdmin = true; }');
+  const roleRead = page.indexOf('try { roleAccess = await getMemberRoleAccess({ userId }); }');
+  const crmCheck = page.indexOf('const crmAccess = await hasCrmWorkspaceAccess(user, userId);');
+  const myWork = page.indexOf('Plinko Pocket · My Work');
   const coreReads = page.indexOf('Promise.all([getMemberOverview({ userId }), getMemberDashboard({ userId })])');
-  const crmHome = page.indexOf('Plinko CRM · operator home');
 
-  assert.ok(crmCheck >= 0, 'CRM authorization must be derived from the verified server user');
-  assert.ok(crmHome > crmCheck, 'CRM-authorized users must receive a dedicated operator home');
-  assert.ok(coreReads > crmHome, 'Pocket Core reads must happen only after the CRM operator return path');
+  assert.ok(roleRead >= 0, 'role lookup must be server-side and bounded');
+  assert.ok(crmCheck > roleRead, 'CRM access must derive from the verified user and verified subject');
+  assert.ok(myWork > crmCheck, 'authorized users must receive the My Work entry surface');
+  assert.ok(coreReads > myWork, 'legacy CRM fallback must remain available before referral Core reads');
   assert.match(page, /href="\/crm"/);
 });

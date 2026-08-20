@@ -6,7 +6,7 @@ import {
   hasCrmRecordHandle,
   requireCrmConfiguration,
 } from '../../../../lib/crm-api.mjs';
-import { requireCrmEqualAdminEmail } from '../../../../lib/crm-equal-admin.mjs';
+import { requireCrmWorkspaceAccess } from '../../../../lib/crm-equal-admin.mjs';
 
 const MAX_DIRECTORY_PAGES = 20;
 const MAX_DIRECTORY_RECORDS = 1000;
@@ -27,7 +27,7 @@ async function actor() {
   const { userId } = await auth();
   if (!userId) return null;
   try {
-    return requireCrmEqualAdminEmail(await currentUser());
+    return await requireCrmWorkspaceAccess(await currentUser(), userId);
   } catch {
     return null;
   }

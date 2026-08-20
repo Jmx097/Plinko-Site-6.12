@@ -5,11 +5,12 @@ import { getAdminControlPlane } from '../../lib/member-dashboard.mjs';
 import { requireAdminEmail } from '../../lib/plinko-pocket-admin.mjs';
 import { requireCrmEqualAdminEmail } from '../../lib/crm-equal-admin.mjs';
 import { getWaitlistEntries } from '../../lib/waitlist.mjs';
-import { updateGrantForMember, updateSupportStatus, updateWaitlistStatus } from './actions';
+import { updateGrantForMember, updateRoleForMember, updateSupportStatus, updateWaitlistStatus } from './actions';
 
 export const dynamic = 'force-dynamic';
 
 const modules = ['community', 'referrals', 'workspace'];
+const roles = ['sales', 'demo'];
 
 export default async function AdminPage() {
   const { userId } = await auth();
@@ -28,8 +29,10 @@ export default async function AdminPage() {
     ...controlPlane.memberProfiles.map((profile) => profile.user_id),
     ...controlPlane.supportRequests.map((request) => request.user_id),
     ...controlPlane.grants.map((grant) => grant.user_id),
+    ...controlPlane.roleAssignments.map((assignment) => assignment.user_id),
   ]);
   const activeGrantKeys = new Set(controlPlane.grants.filter((grant) => grant.enabled && (!grant.expires_at || Date.parse(grant.expires_at) > Date.now())).map((grant) => `${grant.user_id}:${grant.module_key}`));
+  const activeRoleKeys = new Set(controlPlane.roleAssignments.filter((assignment) => assignment.enabled && (!assignment.expires_at || Date.parse(assignment.expires_at) > Date.now())).map((assignment) => `${assignment.user_id}:${assignment.role_key}`));
 
   return (
     <main className="admin-page">
@@ -66,6 +69,12 @@ export default async function AdminPage() {
               <form action={updateSupportStatus.bind(null, request.id)}><label>Status<select name="status" defaultValue={request.status}><option value="open">Open</option><option value="in_progress">In progress</option><option value="resolved">Resolved</option></select></label><button className="btn btn-ghost" type="submit">Update</button></form>
             </article>
           ))}</div> : <p>No member support requests.</p>}
+        </section>
+
+        <section aria-labelledby="role-title">
+          <h2 id="role-title">Member roles</h2>
+          <p className="admin-intro">Roles compose. A member can hold both Sales and Demo without one replacing the other.</p>
+          {members.size ? <div className="admin-list">{[...members].sort().map((memberUserId) => <article key={memberUserId} className="admin-grants"><strong>Member subject: {memberUserId}</strong><div>{roles.map((roleKey) => <form key={roleKey} action={updateRoleForMember.bind(null, memberUserId, roleKey)}><span>{roleKey === 'sales' ? 'Sales — CRM + Five Stations' : 'Demo — course library only'}</span><select name="enabled" defaultValue={activeRoleKeys.has(`${memberUserId}:${roleKey}`) ? 'true' : 'false'}><option value="false">Disabled</option><option value="true">Enabled</option></select><button className="btn btn-ghost" type="submit">Save</button></form>)}</div></article>)}</div> : <p>Members appear here after their first authenticated Pocket visit.</p>}
         </section>
 
         <section aria-labelledby="grant-title">
