@@ -17,7 +17,7 @@ export async function hasCrmWorkspaceAccessWithRoleAccess(user, userId, environm
   try {
     const access = await getRoleAccess(userId);
     if (access?.capabilities?.includes('crm.workspace')) return true;
-    return isCrmEqualAdminEmail(email, environment) && access?.hasRoleAssignment === false;
+    return isCrmEqualAdminEmail(email, environment) && access?.hasSalesRoleAssignment === false;
   } catch {
     return false;
   }

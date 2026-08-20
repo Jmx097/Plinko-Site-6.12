@@ -33,7 +33,7 @@ export async function getMemberRoleAccessWithConfig({ userId, config, fetchImpl 
   const roles = assignments
     .filter((assignment) => assignment.enabled === true && ROLE_KEYS.has(assignment.role_key) && (!assignment.expires_at || Date.parse(assignment.expires_at) > now))
     .map((assignment) => assignment.role_key);
-  return { roles, capabilities: capabilitiesForRoles(roles), hasRoleAssignment: assignments.length > 0 };
+  return { roles, capabilities: capabilitiesForRoles(roles), hasSalesRoleAssignment: assignments.some((assignment) => assignment.role_key === 'sales') };
 }
 
 export async function setMemberRoleWithConfig({ userId, roleKey, enabled, actorEmail, config, fetchImpl = fetch } = {}) {

@@ -40,7 +40,7 @@ test('role-store failures deny legacy CRM allowlists instead of falling back', a
 });
 
 test('an explicit active Sales role grants CRM access without a legacy allowlist entry', async () => {
-  const roleAccessFor = async () => ({ roles: ['sales'], capabilities: ['crm.workspace', 'stations.playbooks'], hasRoleAssignment: true });
+  const roleAccessFor = async () => ({ roles: ['sales'], capabilities: ['crm.workspace', 'stations.playbooks'], hasSalesRoleAssignment: true });
   assert.equal(await hasCrmWorkspaceAccessWithRoleAccess(user('sales@example.com'), 'active_sales', {}, roleAccessFor), true);
 });
 

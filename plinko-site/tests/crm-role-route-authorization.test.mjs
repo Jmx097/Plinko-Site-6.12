@@ -49,6 +49,13 @@ for (const [condition, assignments, options] of [
   });
 }
 
+test('/crm and /api/crm preserve legacy access for an allowlisted Demo-only member', async () => {
+  const requireAccess = requireAccessFor({ demo_only_legacy: [{ role_key: 'demo', enabled: true, expires_at: null }] });
+  const member = user('legacy@example.com');
+  assert.deepEqual(await crmPageAuthorization({ user: member, userId: 'demo_only_legacy', requireAccess }), { allowed: true });
+  assert.equal(await crmApiActor({ user: member, userId: 'demo_only_legacy', requireAccess }), 'legacy@example.com');
+});
+
 test('/crm and /api/crm authorize an active Sales member without a legacy allowlist entry', async () => {
   const requireAccess = requireAccessFor({ sales_member: [{ role_key: 'sales', enabled: true, expires_at: null }] });
   const member = user('sales@example.com');
