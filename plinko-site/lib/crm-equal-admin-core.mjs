@@ -14,7 +14,17 @@ export function isCrmEqualAdminEmail(email, environment = process.env) {
 export async function hasCrmWorkspaceAccessWithRoleAccess(user, userId, environment = process.env, getRoleAccess) {
   const email = verifiedPrimaryEmail(user);
   if (!email || !userId || typeof getRoleAccess !== 'function') return false;
-  const access = await getRoleAccess(userId);
-  if (access?.capabilities?.includes('crm.workspace')) return true;
-  return isCrmEqualAdminEmail(email, environment) && access?.hasRoleAssignment === false;
+  try {
+    const access = await getRoleAccess(userId);
+    if (access?.capabilities?.includes('crm.workspace')) return true;
+    return isCrmEqualAdminEmail(email, environment) && access?.hasRoleAssignment === false;
+  } catch {
+    return false;
+  }
+}
+
+export async function requireCrmWorkspaceAccessWithRoleAccess(user, userId, environment = process.env, getRoleAccess) {
+  const email = verifiedPrimaryEmail(user);
+  if (!email || !(await hasCrmWorkspaceAccessWithRoleAccess(user, userId, environment, getRoleAccess))) throw new Error('CRM workspace access required');
+  return email;
 }

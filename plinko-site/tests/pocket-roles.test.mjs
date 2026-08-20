@@ -45,8 +45,8 @@ test('disabled or revoked Sales and Demo assignments grant no capabilities and p
   assert.doesNotMatch(calls[0], /enabled=eq\.true/);
 
   const [crm, demo] = await Promise.all([source('app/crm/page.jsx'), source('app/demo/page.jsx')]);
-  assert.match(crm, /requireCrmWorkspaceAccess/);
-  assert.match(crm, /redirect\('\/account'\)/);
+  assert.match(crm, /crmPageAuthorization/);
+  assert.match(crm, /redirect\(authorization\.redirectTo\)/);
   assert.match(demo, /demo\.course/);
   assert.match(demo, /redirect\('\/account'\)/);
 });

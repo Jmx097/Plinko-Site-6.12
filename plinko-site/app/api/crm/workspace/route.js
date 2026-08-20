@@ -7,6 +7,7 @@ import {
   requireCrmConfiguration,
 } from '../../../../lib/crm-api.mjs';
 import { requireCrmWorkspaceAccess } from '../../../../lib/crm-equal-admin.mjs';
+import { crmApiActor } from '../../../../lib/crm-route-access-core.mjs';
 
 const MAX_DIRECTORY_PAGES = 20;
 const MAX_DIRECTORY_RECORDS = 1000;
@@ -25,12 +26,7 @@ const handle = (kind, id, config) => crmRecordHandle(kind, id, config);
 
 async function actor() {
   const { userId } = await auth();
-  if (!userId) return null;
-  try {
-    return await requireCrmWorkspaceAccess(await currentUser(), userId);
-  } catch {
-    return null;
-  }
+  return crmApiActor({ user: userId ? await currentUser() : null, userId, requireAccess: requireCrmWorkspaceAccess });
 }
 
 function invalid(message = 'Invalid CRM command') {

@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { hasCrmWorkspaceAccessWithRoleAccess, isCrmEqualAdminEmail, verifiedPrimaryEmail } from './crm-equal-admin-core.mjs';
+import { hasCrmWorkspaceAccessWithRoleAccess, isCrmEqualAdminEmail, requireCrmWorkspaceAccessWithRoleAccess, verifiedPrimaryEmail } from './crm-equal-admin-core.mjs';
 import { getMemberRoleAccess } from './pocket-roles.mjs';
 export { isCrmEqualAdminEmail, verifiedPrimaryEmail } from './crm-equal-admin-core.mjs';
 
@@ -18,9 +18,7 @@ export async function hasCrmWorkspaceAccess(user, userId, environment = process.
 
 /** Returns a verified Clerk email only when the user may work in CRM. */
 export async function requireCrmWorkspaceAccess(user, userId, environment = process.env) {
-  const email = verifiedPrimaryEmail(user);
-  if (!email || !(await hasCrmWorkspaceAccess(user, userId, environment))) throw new Error('CRM workspace access required');
-  return email;
+  return requireCrmWorkspaceAccessWithRoleAccess(user, userId, environment, (subject) => getMemberRoleAccess({ userId: subject, environment }));
 }
 
 /** @deprecated use requireCrmWorkspaceAccess with the verified Clerk subject. */
