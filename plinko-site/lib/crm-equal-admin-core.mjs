@@ -10,3 +10,11 @@ export function isCrmEqualAdminEmail(email, environment = process.env) {
   const existingAdmins = String(environment.PLINKO_POCKET_ADMIN_EMAILS || '').split(',').map((value) => value.trim().toLowerCase()).filter(Boolean);
   return existingAdmins.includes(normalized) || equalAdmins.includes(normalized);
 }
+
+export async function hasCrmWorkspaceAccessWithRoleAccess(user, userId, environment = process.env, getRoleAccess) {
+  const email = verifiedPrimaryEmail(user);
+  if (!email || !userId || typeof getRoleAccess !== 'function') return false;
+  const access = await getRoleAccess(userId);
+  if (access?.capabilities?.includes('crm.workspace')) return true;
+  return isCrmEqualAdminEmail(email, environment) && access?.hasRoleAssignment === false;
+}

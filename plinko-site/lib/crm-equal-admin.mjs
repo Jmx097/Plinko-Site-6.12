@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { isCrmEqualAdminEmail, verifiedPrimaryEmail } from './crm-equal-admin-core.mjs';
+import { hasCrmWorkspaceAccessWithRoleAccess, isCrmEqualAdminEmail, verifiedPrimaryEmail } from './crm-equal-admin-core.mjs';
 import { getMemberRoleAccess } from './pocket-roles.mjs';
 export { isCrmEqualAdminEmail, verifiedPrimaryEmail } from './crm-equal-admin-core.mjs';
 
@@ -9,12 +9,8 @@ export { isCrmEqualAdminEmail, verifiedPrimaryEmail } from './crm-equal-admin-co
  * fallback for existing operators until their Sales role is assigned.
  */
 export async function hasCrmWorkspaceAccess(user, userId, environment = process.env) {
-  const email = verifiedPrimaryEmail(user);
-  if (email && isCrmEqualAdminEmail(email, environment)) return true;
-  if (!userId) return false;
   try {
-    const access = await getMemberRoleAccess({ userId, environment });
-    return access.capabilities.includes('crm.workspace');
+    return await hasCrmWorkspaceAccessWithRoleAccess(user, userId, environment, (subject) => getMemberRoleAccess({ userId: subject, environment }));
   } catch {
     return false;
   }

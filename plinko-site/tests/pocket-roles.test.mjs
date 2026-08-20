@@ -40,8 +40,9 @@ test('disabled or revoked Sales and Demo assignments grant no capabilities and p
     ]));
   };
   const access = await getMemberRoleAccessWithConfig({ userId: 'revoked_member', config, fetchImpl });
-  assert.deepEqual(access, { roles: [], capabilities: [] });
-  assert.match(calls[0], /member_role_assignments\?user_id=eq\.revoked_member&enabled=eq\.true/);
+  assert.deepEqual(access, { roles: [], capabilities: [], hasRoleAssignment: true });
+  assert.match(calls[0], /member_role_assignments\?user_id=eq\.revoked_member&select=role_key,enabled,expires_at/);
+  assert.doesNotMatch(calls[0], /enabled=eq\.true/);
 
   const [crm, demo] = await Promise.all([source('app/crm/page.jsx'), source('app/demo/page.jsx')]);
   assert.match(crm, /requireCrmWorkspaceAccess/);
