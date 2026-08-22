@@ -43,6 +43,7 @@ export default async function AccountPage() {
             <span>Open Accounts to work the weekly queue, then use Campaigns to record manual outcomes and follow-ups.</span>
           </div>
           <p className="member-admin-link"><a href="/crm">Open campaign CRM →</a></p>
+          <p className="member-admin-link"><a href="/copilot">Open Pocket Hermes Copilot →</a></p>
         </section>
       </main>
     );
