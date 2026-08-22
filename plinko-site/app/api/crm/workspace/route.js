@@ -7,6 +7,7 @@ import {
   requireCrmConfiguration,
 } from '../../../../lib/crm-api.mjs';
 import { requireCrmEqualAdminEmail } from '../../../../lib/crm-equal-admin.mjs';
+import { createJonGmailDraft } from '../../../../lib/gmail-draft.mjs';
 
 const MAX_DIRECTORY_PAGES = 20;
 const MAX_DIRECTORY_RECORDS = 1000;
@@ -78,6 +79,7 @@ function commandPayload(action, payload) {
     case 'contact_workspace': return { contactKey: requiredHandle(payload, 'contactKey', 'contact') };
     case 'task_workspace': return { taskKey: requiredHandle(payload, 'taskKey', 'task') };
     case 'email_workspace': return { emailKey: requiredHandle(payload, 'emailKey', 'email') };
+    case 'approve_create_gmail_draft': return { emailKey: requiredHandle(payload, 'emailKey', 'email') };
     case 'template_workspace': return { templateKey: requiredHandle(payload, 'templateKey', 'template') };
     case 'create_note': return { accountKey: requiredHandle(payload, 'accountKey', 'account'), note: stringField(payload.note, 'note', { required: true, max: 4000 }) };
     case 'create_task': return { accountKey: requiredHandle(payload, 'accountKey', 'account'), title: stringField(payload.title, 'title', { required: true, max: 240 }), dueAt: optionalIsoDate(payload.dueAt) };
@@ -285,7 +287,9 @@ function publicEmailRow(row, config) {
     recipientEmail: row.recipientEmail,
     revision: row.revision,
     approval: row.approval,
+    subject: row.subject,
     body: row.body,
+    gmailExport: row.gmailExport || null,
     createdAt: row.createdAt,
   };
 }
@@ -304,6 +308,8 @@ async function emailDraftRows(actorEmail) {
   const workspaces = await Promise.all(emailCampaigns.map(async (campaign) => ({ campaign, workspace: await crmWorkspaceAction('campaign_workspace', { campaign_id: campaign.id }, actorEmail) })));
   return workspaces.flatMap(({ campaign, workspace }) => (workspace.members || []).flatMap((member) => (member.drafts || []).filter((draft) => draft.id && member.membership_id).map((draft) => ({
     identity: `${campaign.id}:${member.membership_id}:${draft.id}`,
+    draftId: draft.id,
+    membershipId: member.membership_id,
     campaignId: campaign.id,
     contactId: member.contact_id || null,
     campaignName: safe(campaign.name, 'Untitled campaign'),
@@ -312,7 +318,9 @@ async function emailDraftRows(actorEmail) {
     recipientEmail: safe(member.email),
     revision: draft.revision || null,
     approval: draft.approval || null,
+    subject: safe(draft.content?.subject, `lien intake at ${safe(member.account_display_name, 'your firm')}`),
     body: safe(draft.content?.body, ''),
+    gmailExport: draft.gmail_export || null,
     createdAt: draft.created_at || null,
   }))));
 }
@@ -424,6 +432,19 @@ export async function POST(request) {
     if (command.action === 'contact_workspace') return Response.json(await contactWorkspace(payload.contactKey, actorEmail, config));
     if (command.action === 'task_workspace') return Response.json(await taskWorkspace(payload.taskKey, actorEmail, config));
     if (command.action === 'email_workspace') return Response.json(await emailWorkspace(payload.emailKey, actorEmail, config));
+    if (command.action === 'approve_create_gmail_draft') {
+      const row = (await emailDraftRows(actorEmail)).find((item) => hasCrmRecordHandle('email', item.identity, payload.emailKey, config));
+      if (!row || !row.recipientEmail || !row.body) throw invalid('Complete draft and recipient email are required');
+      if (row.gmailExport?.status === 'created') return Response.json({ recorded: true, gmailDraftCreated: true, mailbox: row.gmailExport.mailbox });
+      if (row.approval !== 'approved') await crmWorkspaceAction('draft_approval', { draft_id: row.draftId, decision: 'approved' }, actorEmail);
+      const claimResult = await crmWorkspaceAction('gmail_export_claim', { draft_id: row.draftId }, actorEmail);
+      const claim = claimResult.export;
+      if (claim?.status === 'created') return Response.json({ recorded: true, gmailDraftCreated: true, mailbox: claim.mailbox });
+      if (!claim?.newly_claimed) throw invalid('Gmail draft creation is already in progress; refresh before retrying');
+      const gmailDraft = await createJonGmailDraft({ to: row.recipientEmail, subject: row.subject, body: row.body });
+      await crmWorkspaceAction('gmail_export_complete', { draft_id: row.draftId, gmail_draft_id: gmailDraft.id }, actorEmail);
+      return Response.json({ recorded: true, gmailDraftCreated: true, mailbox: gmailDraft.mailbox }, { status: 201 });
+    }
     if (command.action === 'template_workspace') return Response.json(await templateWorkspace(payload.templateKey, actorEmail, config));
 
     if (command.action === 'account_workspace' || command.action === 'account_approval' || command.action.startsWith('create_') || command.action.startsWith('contact_') || command.action === 'complete_task' || command.action === 'add_campaign_member') {

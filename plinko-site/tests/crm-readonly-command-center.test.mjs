@@ -236,7 +236,7 @@ test('Calendar renders only permitted account tasks in day, week, month, and age
   assert.match(styles, /\.crm-calendar-unavailable/);
 });
 
-test('Emails and Email Templates expose authenticated email-campaign draft revisions without mailbox or delivery actions', async () => {
+test('Emails expose approved compose-only Gmail drafts while Email Templates remain read-only', async () => {
   const client = await source('app/crm/CrmWorkspace.jsx');
   const route = await source('app/api/crm/workspace/route.js');
   const styles = await source('app/globals.css');
@@ -249,9 +249,10 @@ test('Emails and Email Templates expose authenticated email-campaign draft revis
   assert.match(client, /function EmailTemplateRecord\(/);
   assert.match(client, /open\('email', email\.key\)/);
   assert.match(client, /open\('template', template\.key\)/);
-  assert.match(client, /mailbox synchronization, sending, and external dispatch are unavailable/);
+  assert.match(client, /Approve & create Gmail draft/);
+  assert.match(client, /It does not send email/);
   assert.match(client, /No template publishing, editing, or external dispatch capability/);
-  assert.match(client, /Preview preserves the persisted draft revision only/);
+  assert.match(client, /This creates a draft in jon@plinkosolutions\.com only/);
   assert.match(route, /directory === 'emails' \|\| directory === 'templates'/);
   assert.match(route, /async function emailDirectory/);
   assert.match(route, /async function templateDirectory/);
