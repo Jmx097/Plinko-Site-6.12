@@ -22,6 +22,6 @@ test('the shared CRM route and API remain Clerk-protected', async () => {
   const broker = await source('app/api/crm/workspace/route.js');
   assert.match(middleware, /'\/crm\(\.\*\)'/);
   assert.match(middleware, /'\/api\/crm\(\.\*\)'/);
-  assert.match(page, /requireCrmEqualAdminEmail/);
-  assert.match(broker, /requireCrmEqualAdminEmail/);
+  assert.match(page, /requireCrmWorkspaceAccess/);
+  assert.match(broker, /requireCrmWorkspaceAccess/);
 });

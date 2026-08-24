@@ -17,7 +17,7 @@ test('v2 screen-parity inventory covers the complete current CRM module shell', 
 
   assert.ok(moduleMatch, 'CRM workspace must declare its module shell');
   const modules = JSON.parse(moduleMatch[1].replaceAll("'", '"'));
-  assert.equal(modules.length, 20, 'the current CRM shell has 20 modules');
+  assert.equal(modules.length, 21, 'the current CRM shell has 21 modules');
   for (const module of modules) {
     assert.match(inventory, new RegExp(`\\| ${module.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\|`), `inventory must explicitly classify ${module}`);
   }

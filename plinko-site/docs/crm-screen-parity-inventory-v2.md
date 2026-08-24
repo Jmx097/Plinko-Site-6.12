@@ -22,6 +22,7 @@ The local QA observation of a signed-out `/account` HTTP 500 remains unresolved 
 | Module | Current surface and source boundary | Classification | Required acceptance evidence |
 |---|---|---|---|
 | My Work | Authenticated daily account/task/activity/campaign read model with freshness and account links. | Source-covered | Equal-admin browser loads, opens an account, refreshes, and confirms scope. |
+| Stations | Five connected operating playbooks—Find, Propose, Onboard, Deliver, and Report—each deep-linked to its existing CRM work module. | Source-covered | Browser opens each station and follows its live work-module handoff. |
 | Playbook | In-product, client-side 2-hour solo-founder workflow guidance that deep-links only to existing CRM modules. It makes no data request or mutation and creates no outreach authority. | Source-covered | Browser module navigation and each step link routes to the named existing module. |
 | Accounts | Searchable, sortable, paginated account directory; account creation uses the bounded CRM command. | Source-covered | Browser search/list/record path and a non-sending create/read-back with a disposable fixture. |
 | Contacts | Scoped directory and contact record views; account, contact approval, and DNC remain separate. | Source-covered | Browser record traversal plus terminal-DNC failure checks. |
@@ -66,7 +67,7 @@ The unavailable classifications above are deliberate product boundaries, not hid
 - `tests/clerk-auth-contract.test.mjs` asserts Clerk installation, route protection, and Clerk-hosted sign-in/up return paths.
 - `tests/crm-account-core-outage.test.mjs` asserts equal-admin CRM entry does not wait on Pocket Core reads.
 - `tests/crm-readonly-command-center.test.mjs` asserts the full module declaration and fail-closed boundaries.
-- `tests/crm-screen-parity-inventory-v2.test.mjs` locks this inventory to the current 20-module declaration and records the signed-out contract/blockers.
+- `tests/crm-screen-parity-inventory-v2.test.mjs` locks this inventory to the current 21-module declaration and records the signed-out contract/blockers.
 
 ## Acceptance rule
 
