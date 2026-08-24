@@ -50,7 +50,7 @@ export default async function AccountPage() {
             <ul>
               <li><strong><a href="/crm">My Work →</a></strong><span>Your shared daily account, task, activity, and campaign workspace.</span></li>
               {(roleAccess.capabilities.includes('copilot.workspace') || crmAccess) ? <li><strong><a href="/copilot">Pocket Copilot →</a></strong><span>Use default-profile Hermes with current CRM context and proposal-only next steps.</span></li> : null}
-              <li><strong><a href="/crm?module=Stations">Five station playbooks →</a></strong><span>Find, Propose, Onboard, Deliver, and Report—connected to the tools used to do the work.</span></li>
+              <li><strong><a href="/crm?module=stations">Five station playbooks →</a></strong><span>Find, Propose, Onboard, Deliver, and Report—connected to the tools used to do the work.</span></li>
               {demoAccess ? <li><strong><a href="/demo">Demo course library →</a></strong><span>Shared learning content, kept separate from the live Sales workspace.</span></li> : null}
             </ul>
           </section>

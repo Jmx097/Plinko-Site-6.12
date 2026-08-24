@@ -55,9 +55,10 @@ test('client DTOs and UI omit secrets and raw CRM identifiers while retaining on
   for (const forbidden of ['account-raw-id', 'contact-raw-id', 'task-raw-id', 'user-raw-id', 'secret-token', 'secret-contact-key', 'ada@example.test', '15551212']) assert.doesNotMatch(serialized, new RegExp(forbidden.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   assert.match(serialized, new RegExp(opaqueAccountKey));
 
-  const [ui, route] = await Promise.all([source('app/copilot/CopilotWorkspace.jsx'), source('app/api/copilot/route.js')]);
-  assert.match(ui, /fetch\('\/api\/copilot'/);
-  assert.match(ui, /encodeURIComponent\(accountKey\)/);
+  const [ui, route, aguiRoute] = await Promise.all([source('app/copilot/CopilotWorkspace.jsx'), source('app/api/copilot/route.js'), source('app/api/copilot/agui/route.js')]);
+  assert.match(ui, /HttpAgent/);
+  assert.match(ui, /url: '\/api\/copilot\/agui'/);
+  assert.match(aguiRoute, /crmWorkspaceAction\('list_accounts', \{ limit: 50 \}, actor\.email\)/);
   assert.doesNotMatch(ui, /serviceRoleKey|service_role|PLINKO_CORE_SERVICE_ROLE_KEY|CRM_API_TOKEN|Authorization/i);
   assert.doesNotMatch(route, /error\.message|error\.stack/);
 });
