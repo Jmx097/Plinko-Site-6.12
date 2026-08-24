@@ -198,7 +198,10 @@ export default function CrmWorkspace() {
     } finally { finish(); }
   }
 
-  useEffect(() => { loadDirectory('accounts'); loadDirectory('campaigns'); loadDirectory('contacts'); loadDirectory('tasks'); loadDirectory('emails'); loadDirectory('templates'); loadHomeDashboard(); }, []);
+  // My Work needs a bounded dashboard immediately. Other heavy directories are
+  // deliberately lazy-loaded when their module opens; loading every account
+  // workspace six times at page load creates avoidable concurrent CRM pressure.
+  useEffect(() => { loadDirectory('accounts'); loadDirectory('campaigns'); loadHomeDashboard(); }, []);
   useEffect(() => {
     const applyRoute = () => {
       const route = routeFromLocation();
