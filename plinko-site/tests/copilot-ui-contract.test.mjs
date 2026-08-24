@@ -5,28 +5,31 @@ import test from 'node:test';
 const root = new URL('../', import.meta.url);
 const source = (path) => readFile(new URL(path, root), 'utf8');
 
-test('Copilot is a protected, full-screen prompt-playbook workspace with no write authority', async () => {
-  const page = await source('app/copilot/page.jsx');
-  const ui = await source('app/copilot/CopilotWorkspace.jsx');
-  const css = await source('app/globals.css');
-  const account = await source('app/account/page.jsx');
+test('Copilot is a protected, fixed-height operating console with live CRM context and explicit write confirmation', async () => {
+  const [page, ui, css, account, workspaceRoute] = await Promise.all([
+    source('app/copilot/page.jsx'), source('app/copilot/CopilotWorkspace.jsx'), source('app/globals.css'), source('app/account/page.jsx'), source('app/api/crm/workspace/route.js'),
+  ]);
   assert.match(page, /await auth\(\)/);
   assert.match(page, /requireCopilotWorkspaceAccess\(await currentUser\(\), userId\)/);
   assert.match(page, /redirect\('\/account'\)/);
   assert.match(ui, /'use client'/);
   assert.match(ui, /HttpAgent/);
   assert.match(ui, /url: '\/api\/copilot\/agui'/);
-  assert.match(ui, /const PLAYBOOKS = \[/);
-  for (const title of ['Plan today', 'Work the outbound queue', 'Prepare a call', 'Prepare a draft', 'Clear a blocker', 'Reflect on the week']) assert.match(ui, new RegExp(title));
-  assert.match(ui, /function prefill\(prompt\)/);
-  assert.match(ui, /copilot-command-shell/);
-  assert.match(ui, /copilot-playbook-grid/);
-  assert.match(ui, /aria-live="polite"/);
-  assert.match(ui, /cannot approve, create, contact, send, dial, or modify CRM records/);
+  for (const title of ['Plan today', 'Work the queue', 'Prepare a call', 'Clear a blocker']) assert.match(ui, new RegExp(title));
+  assert.match(ui, /directory=home/);
+  assert.match(ui, /\/api\/crm\/workspace/);
+  for (const action of ['account_approval', 'create_task', 'create_note']) assert.match(ui, new RegExp(`'${action}'`));
+  assert.match(ui, /Confirm CRM change/);
+  assert.match(ui, /Confirm change/);
+  assert.match(ui, /does not contact anyone, send email, dial a call, or bypass existing approval gates/);
   assert.doesNotMatch(ui, /method:\s*'PUT'|method:\s*'PATCH'|method:\s*'DELETE'/);
-  assert.match(css, /\.copilot-command-shell/);
-  assert.match(css, /\.copilot-playbook-grid/);
-  assert.match(css, /@media \(max-width:520px\)/);
+  assert.match(workspaceRoute, /create_account_approval/);
+  assert.match(workspaceRoute, /create_note/);
+  assert.match(workspaceRoute, /create_task/);
+  assert.match(css, /\.copilot-console \{ height:100vh/);
+  assert.match(css, /\.copilot-console-grid/);
+  assert.match(css, /\.copilot-live-panel/);
+  assert.match(css, /\.copilot-console\.is-gradient/);
   assert.match(account, /href="\/copilot"/);
   assert.match(account, /href="\/crm\?module=stations"/);
 });
